@@ -14,12 +14,23 @@ const PRIMARY_MAX_MB = Number(process.env.PRIMARY_MAX_MB || 420);
 function makePool(connStr) {
     if (!connStr) return null;
     const isLocal = connStr.includes("127.0.0.1") || connStr.includes("localhost");
+    let cleanConnStr = connStr;
+    if (!isLocal) {
+        try {
+            const u = new URL(connStr);
+            // Prevent pg-connection-string from treating ?sslmode=require as strict verify-full
+            // against managed poolers (Supabase Transaction Pooler uses an intermediate CA).
+            u.searchParams.delete("sslmode");
+            u.searchParams.delete("uselibpqcompat");
+            cleanConnStr = u.toString();
+        } catch (_) {}
+    }
     const pool = new Pool({
-        connectionString: connStr,
+        connectionString: cleanConnStr,
         ssl: isLocal ? false : { rejectUnauthorized: false },
         max: 5,
         idleTimeoutMillis: 20000,
-        connectionTimeoutMillis: 8000,
+        connectionTimeoutMillis: 15000,
     });
     if (attachDatabasePool && (process.env.VERCEL === "1" || process.env.NODE_ENV === "production")) {
         try {

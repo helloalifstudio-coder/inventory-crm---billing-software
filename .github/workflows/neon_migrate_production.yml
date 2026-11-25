@@ -34,10 +34,11 @@ jobs:
       - name: Verify production build
         run: npm run build
 
-      - name: Run Dual-DB Migration on Neon
+      - name: Run Dual-DB Migration on Neon (+ Optional Secondary DB)
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          SECONDARY_DATABASE_URL: ${{ secrets.SECONDARY_DATABASE_URL }}
           TARGET_BRANCH: ${{ inputs.branch }}
           STATUS_ONLY: ${{ inputs.status_only }}
         run: |

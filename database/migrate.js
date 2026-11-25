@@ -48,11 +48,20 @@ function deriveDirectUrl(connStr) {
 
 function createPool(connStr) {
     const isLocal = connStr.includes("127.0.0.1") || connStr.includes("localhost");
+    let cleanConnStr = connStr;
+    if (!isLocal) {
+        try {
+            const u = new URL(connStr);
+            u.searchParams.delete("sslmode");
+            u.searchParams.delete("uselibpqcompat");
+            cleanConnStr = u.toString();
+        } catch (_) {}
+    }
     return new Pool({
-        connectionString: connStr,
+        connectionString: cleanConnStr,
         ssl: isLocal ? false : { rejectUnauthorized: false },
         max: 3,
-        connectionTimeoutMillis: 12000,
+        connectionTimeoutMillis: 20000,
     });
 }
 
@@ -178,14 +187,15 @@ async function main() {
     console.log("  Mode:", STATUS_ONLY ? "STATUS CHECK (--status)" : "APPLY MIGRATIONS");
     console.log("====================================================================");
 
+    const secondaryOnly = process.argv.includes("--secondary-only");
     const rawPrimary = process.env.PRIMARY_DATABASE_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL || "";
     const explicitUnpooled = process.env.DATABASE_URL_UNPOOLED || "";
-    let primaryUrl = explicitUnpooled || deriveDirectUrl(rawPrimary) || rawPrimary;
+    let primaryUrl = secondaryOnly ? "" : (explicitUnpooled || deriveDirectUrl(rawPrimary) || rawPrimary);
     const secondaryUrl = process.env.SECONDARY_DATABASE_URL || "";
 
     if (!primaryUrl && !secondaryUrl) {
         console.error("\n[ERROR] No database URL found.");
-        console.error("Set PRIMARY_DATABASE_URL (and optional SECONDARY_DATABASE_URL) in .env or environment.");
+        console.error("Set PRIMARY_DATABASE_URL (and/or SECONDARY_DATABASE_URL) in .env or environment.");
         process.exit(1);
     }
 
@@ -194,10 +204,15 @@ async function main() {
         .filter((f) => f.endsWith(".sql"))
         .sort();
 
-    let pRes = await migrateTarget("Primary Database", primaryUrl, migrationFiles);
-    if (!pRes.ok && rawPrimary && primaryUrl !== rawPrimary) {
-        console.log("\n  [Fallback] Direct hostname unavailable; retrying via supplied pooled URL...");
-        pRes = await migrateTarget("Primary Database (Pooled)", rawPrimary, migrationFiles);
+    let pRes = { ok: true };
+    if (!secondaryOnly) {
+        pRes = await migrateTarget("Primary Database", primaryUrl, migrationFiles);
+        if (!pRes.ok && rawPrimary && primaryUrl !== rawPrimary) {
+            console.log("\n  [Fallback] Direct hostname unavailable; retrying via supplied pooled URL...");
+            pRes = await migrateTarget("Primary Database (Pooled)", rawPrimary, migrationFiles);
+        }
+    } else {
+        console.log("\nTarget: Primary Database -> SKIPPED (--secondary-only)");
     }
     const sRes = await migrateTarget("Secondary Database (Failover + Excess)", secondaryUrl, migrationFiles);
 
