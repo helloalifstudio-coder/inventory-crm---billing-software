@@ -40,13 +40,19 @@ function loadDotEnv(filePath) {
 loadDotEnv(path.join(ROOT_DIR, ".env.local"));
 loadDotEnv(path.join(ROOT_DIR, ".env"));
 
+function deriveDirectUrl(connStr) {
+    if (!connStr) return "";
+    // Per Neon best practices, schema migrations prefer a direct (non -pooler) endpoint
+    return connStr.replace("-pooler.", ".");
+}
+
 function createPool(connStr) {
     const isLocal = connStr.includes("127.0.0.1") || connStr.includes("localhost");
     return new Pool({
         connectionString: connStr,
         ssl: isLocal ? false : { rejectUnauthorized: false },
         max: 3,
-        connectionTimeoutMillis: 10000,
+        connectionTimeoutMillis: 12000,
     });
 }
 
@@ -172,7 +178,9 @@ async function main() {
     console.log("  Mode:", STATUS_ONLY ? "STATUS CHECK (--status)" : "APPLY MIGRATIONS");
     console.log("====================================================================");
 
-    const primaryUrl = process.env.PRIMARY_DATABASE_URL || process.env.DATABASE_URL || "";
+    const rawPrimary = process.env.PRIMARY_DATABASE_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL || "";
+    const explicitUnpooled = process.env.DATABASE_URL_UNPOOLED || "";
+    let primaryUrl = explicitUnpooled || deriveDirectUrl(rawPrimary) || rawPrimary;
     const secondaryUrl = process.env.SECONDARY_DATABASE_URL || "";
 
     if (!primaryUrl && !secondaryUrl) {
@@ -186,7 +194,11 @@ async function main() {
         .filter((f) => f.endsWith(".sql"))
         .sort();
 
-    const pRes = await migrateTarget("Primary Database", primaryUrl, migrationFiles);
+    let pRes = await migrateTarget("Primary Database", primaryUrl, migrationFiles);
+    if (!pRes.ok && rawPrimary && primaryUrl !== rawPrimary) {
+        console.log("\n  [Fallback] Direct hostname unavailable; retrying via supplied pooled URL...");
+        pRes = await migrateTarget("Primary Database (Pooled)", rawPrimary, migrationFiles);
+    }
     const sRes = await migrateTarget("Secondary Database (Failover + Excess)", secondaryUrl, migrationFiles);
 
     console.log("\n====================================================================");

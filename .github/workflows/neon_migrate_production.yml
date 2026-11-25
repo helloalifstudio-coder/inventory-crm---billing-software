@@ -1,0 +1,54 @@
+name: Neon Production Schema Migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Target Neon branch name to migrate"
+        required: true
+        default: "production"
+        type: string
+      status_only:
+        description: "Check migration status without applying changes"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  migrate:
+    name: Migrate Neon Branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify production build
+        run: npm run build
+
+      - name: Run Dual-DB Migration on Neon
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          TARGET_BRANCH: ${{ inputs.branch }}
+          STATUS_ONLY: ${{ inputs.status_only }}
+        run: |
+          DIRECT_URL=$(npx --yes neonctl@latest connection-string "$TARGET_BRANCH" --project-id "$NEON_PROJECT_ID" --api-key "$NEON_API_KEY" --role-name neondb_owner --database-name neondb)
+          echo "::add-mask::$DIRECT_URL"
+          POOLED_URL=$(npx --yes neonctl@latest connection-string "$TARGET_BRANCH" --project-id "$NEON_PROJECT_ID" --api-key "$NEON_API_KEY" --pooled --role-name neondb_owner --database-name neondb)
+          echo "::add-mask::$POOLED_URL"
+          export DATABASE_URL_UNPOOLED="$DIRECT_URL"
+          export PRIMARY_DATABASE_URL="$POOLED_URL"
+          if [ "$STATUS_ONLY" = "true" ]; then
+            npm run migrate:status
+          else
+            npm run migrate
+          fi

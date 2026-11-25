@@ -96,20 +96,27 @@ for (const mig of ["V001__core_schema.sql", "V002__performance_indexes_100k.sql"
 }
 console.log("[PASS] Database migrations V001..V003 & runner verified.");
 
-// 6. Secret-leak hygiene scan (exclude node_modules & .git)
+// 6. Secret-leak hygiene scan (exclude node_modules, .git, gitignored .env/.env.local)
 function walkAll(dir) {
     const res = [];
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (entry.name === "node_modules" || entry.name === ".git" || entry.name.endsWith(".png") || entry.name.endsWith(".ico") || entry.name.endsWith(".ttf")) continue;
+        if (entry.name === "node_modules" || entry.name === ".git" || entry.name === ".env" || entry.name === ".env.local" || entry.name === ".neon" || entry.name.endsWith(".png") || entry.name.endsWith(".ico") || entry.name.endsWith(".ttf")) continue;
         const p = path.join(dir, entry.name);
         if (entry.isDirectory()) res.push(...walkAll(p));
         else res.push(p);
     }
     return res;
 }
+const gitignoreTxt = fs.existsSync(path.join(ROOT, ".gitignore")) ? fs.readFileSync(path.join(ROOT, ".gitignore"), "utf8") : "";
+assert(gitignoreTxt.includes(".env.local") && gitignoreTxt.includes(".env"), ".gitignore must ignore .env and .env.local");
+if (fs.existsSync(path.join(ROOT, ".git"))) {
+    const tracked = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" }).split(/\r?\n/);
+    for (const tf of tracked) {
+        assert(!/^\.env($|\.local$)/.test(path.basename(tf)), `Secret env file is tracked in git: ${tf}`);
+    }
+}
 for (const f of walkAll(ROOT)) {
-    assert(!path.basename(f).startsWith(".env") || path.basename(f) === ".env.example", `Secret env file found in repo: ${f}`);
     const txt = fs.readFileSync(f, "utf8");
     assert(!/gh[pou]_[A-Za-z0-9]{20,}/.test(txt), `Potential GitHub token string found in ${f}`);
 }
-console.log("[PASS] Repository clean: zero .env secrets or tokens present.");
+console.log("[PASS] Repository clean: zero tracked .env secrets or tokens present.");

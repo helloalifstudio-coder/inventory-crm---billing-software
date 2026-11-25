@@ -7,12 +7,17 @@
     "node": ">=18.0.0"
   },
   "scripts": {
+    "build": "node scripts/verify-production.js",
+    "start": "node scripts/dev-server.js",
     "migrate": "node database/migrate.js",
     "migrate:status": "node database/migrate.js --status",
     "sync:backend": "node scripts/sync-shared-backend.js",
     "verify": "node scripts/verify-production.js"
   },
   "dependencies": {
+    "@neon/config": "^1.14.7",
+    "@neon/env": "^2.1.10",
+    "@vercel/functions": "^2.0.0",
     "pg": "^8.13.1"
   }
 }

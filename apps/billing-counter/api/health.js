@@ -13,7 +13,9 @@ module.exports = async function handler(req, res) {
 
     const sessionSecret = String(process.env.SESSION_SECRET || "");
     const envCheck = {
-        PRIMARY_DATABASE_URL: Boolean(process.env.PRIMARY_DATABASE_URL || process.env.DATABASE_URL),
+        DATABASE_URL: Boolean(process.env.DATABASE_URL || process.env.PRIMARY_DATABASE_URL || process.env.POSTGRES_URL),
+        DATABASE_URL_UNPOOLED: Boolean(process.env.DATABASE_URL_UNPOOLED),
+        PRIMARY_DATABASE_URL: Boolean(process.env.PRIMARY_DATABASE_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL),
         SECONDARY_DATABASE_URL: Boolean(process.env.SECONDARY_DATABASE_URL),
         PRIMARY_MAX_MB: Boolean(process.env.PRIMARY_MAX_MB),
         OWNER_PIN: Boolean(process.env.OWNER_PIN),

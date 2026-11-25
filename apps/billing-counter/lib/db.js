@@ -1,5 +1,10 @@
 const { Pool } = require("pg");
 
+let attachDatabasePool = null;
+try {
+    ({ attachDatabasePool } = require("@vercel/functions"));
+} catch (_) {}
+
 let primaryPool = null;
 let secondaryPool = null;
 const schemaInitialized = new WeakSet();
@@ -9,17 +14,23 @@ const PRIMARY_MAX_MB = Number(process.env.PRIMARY_MAX_MB || 420);
 function makePool(connStr) {
     if (!connStr) return null;
     const isLocal = connStr.includes("127.0.0.1") || connStr.includes("localhost");
-    return new Pool({
+    const pool = new Pool({
         connectionString: connStr,
         ssl: isLocal ? false : { rejectUnauthorized: false },
         max: 5,
         idleTimeoutMillis: 20000,
-        connectionTimeoutMillis: 6000,
+        connectionTimeoutMillis: 8000,
     });
+    if (attachDatabasePool && (process.env.VERCEL === "1" || process.env.NODE_ENV === "production")) {
+        try {
+            attachDatabasePool(pool);
+        } catch (_) {}
+    }
+    return pool;
 }
 
 function getPrimaryPool() {
-    const url = process.env.PRIMARY_DATABASE_URL || process.env.DATABASE_URL || "";
+    const url = process.env.PRIMARY_DATABASE_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL || "";
     if (!url) return null;
     if (!primaryPool) primaryPool = makePool(url);
     return primaryPool;
