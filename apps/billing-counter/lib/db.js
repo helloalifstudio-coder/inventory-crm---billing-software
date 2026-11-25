@@ -537,6 +537,7 @@ async function archiveExcessToSecondary(daysOld = 90) {
 module.exports = {
     getPrimaryPool,
     getSecondaryPool,
+    ensureSchema,
     queryRead,
     queryBothMerged,
     runDualWrite,
