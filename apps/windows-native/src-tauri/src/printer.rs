@@ -11,12 +11,63 @@ pub struct PrinterInfo {
 }
 
 #[cfg(windows)]
+mod winspool {
+    use std::ffi::c_void;
+
+    #[repr(C)]
+    pub struct PrinterInfo4W {
+        pub p_printer_name: *mut u16,
+        pub p_server_name: *mut u16,
+        pub attributes: u32,
+    }
+
+    #[repr(C)]
+    pub struct DocInfo1W {
+        pub p_doc_name: *mut u16,
+        pub p_output_file: *mut u16,
+        pub p_datatype: *mut u16,
+    }
+
+    #[link(name = "winspool")]
+    extern "system" {
+        pub fn EnumPrintersW(
+            flags: u32,
+            name: *const u16,
+            level: u32,
+            p_printer_enum: *mut u8,
+            cb_buf: u32,
+            pcb_needed: *mut u32,
+            pc_returned: *mut u32,
+        ) -> i32;
+        pub fn GetDefaultPrinterW(psz_buffer: *mut u16, pcch_buffer: *mut u32) -> i32;
+        pub fn OpenPrinterW(
+            p_printer_name: *const u16,
+            ph_printer: *mut *mut c_void,
+            p_default: *const c_void,
+        ) -> i32;
+        pub fn StartDocPrinterW(
+            h_printer: *mut c_void,
+            level: u32,
+            p_doc_info: *const DocInfo1W,
+        ) -> u32;
+        pub fn StartPagePrinter(h_printer: *mut c_void) -> i32;
+        pub fn WritePrinter(
+            h_printer: *mut c_void,
+            p_buf: *const u8,
+            cb_buf: u32,
+            pc_written: *mut u32,
+        ) -> i32;
+        pub fn EndPagePrinter(h_printer: *mut c_void) -> i32;
+        pub fn EndDocPrinter(h_printer: *mut c_void) -> i32;
+        pub fn ClosePrinter(h_printer: *mut c_void) -> i32;
+    }
+}
+
+#[cfg(windows)]
 pub fn enumerate_windows_printers() -> Vec<PrinterInfo> {
     use std::ptr;
-    use windows_sys::Win32::Graphics::Printing::{
-        EnumPrintersW, PRINTER_ENUM_CONNECTIONS, PRINTER_ENUM_LOCAL, PRINTER_INFO_2W,
-    };
-    const PRINTER_ATTRIBUTE_DEFAULT_FLAG: u32 = 0x0000_0004;
+    const PRINTER_ENUM_LOCAL: u32 = 0x0000_0002;
+    const PRINTER_ENUM_CONNECTIONS: u32 = 0x0000_0004;
 
     unsafe fn wide_ptr_to_string(ptr_w: *const u16) -> String {
         if ptr_w.is_null() {
@@ -29,28 +80,36 @@ pub fn enumerate_windows_printers() -> Vec<PrinterInfo> {
         String::from_utf16_lossy(std::slice::from_raw_parts(ptr_w, len))
     }
 
+    unsafe fn default_printer_name() -> String {
+        let mut len: u32 = 0;
+        winspool::GetDefaultPrinterW(ptr::null_mut(), &mut len);
+        if len == 0 {
+            return String::new();
+        }
+        let mut buf = vec![0u16; len as usize];
+        if winspool::GetDefaultPrinterW(buf.as_mut_ptr(), &mut len) != 0 {
+            let trimmed = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+            String::from_utf16_lossy(&buf[..trimmed])
+        } else {
+            String::new()
+        }
+    }
+
     let flags = PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS;
     let mut needed: u32 = 0;
     let mut returned: u32 = 0;
 
     unsafe {
-        EnumPrintersW(
-            flags,
-            ptr::null(),
-            2,
-            ptr::null_mut(),
-            0,
-            &mut needed,
-            &mut returned,
-        );
+        let def_name = default_printer_name();
+        winspool::EnumPrintersW(flags, ptr::null(), 4, ptr::null_mut(), 0, &mut needed, &mut returned);
         if needed == 0 {
             return Vec::new();
         }
         let mut buf = vec![0u8; needed as usize];
-        let ok = EnumPrintersW(
+        let ok = winspool::EnumPrintersW(
             flags,
             ptr::null(),
-            2,
+            4,
             buf.as_mut_ptr(),
             needed,
             &mut needed,
@@ -60,17 +119,21 @@ pub fn enumerate_windows_printers() -> Vec<PrinterInfo> {
             return Vec::new();
         }
         let infos = std::slice::from_raw_parts(
-            buf.as_ptr() as *const PRINTER_INFO_2W,
+            buf.as_ptr() as *const winspool::PrinterInfo4W,
             returned as usize,
         );
         infos
             .iter()
-            .map(|p| PrinterInfo {
-                name: wide_ptr_to_string(p.pPrinterName.cast_const()),
-                port: wide_ptr_to_string(p.pPortName.cast_const()),
-                driver: wide_ptr_to_string(p.pDriverName.cast_const()),
-                is_default: (p.Attributes & PRINTER_ATTRIBUTE_DEFAULT_FLAG) != 0,
-                status: p.Status,
+            .map(|p| {
+                let name = wide_ptr_to_string(p.p_printer_name.cast_const());
+                let server = wide_ptr_to_string(p.p_server_name.cast_const());
+                PrinterInfo {
+                    is_default: !def_name.is_empty() && name.eq_ignore_ascii_case(&def_name),
+                    name,
+                    port: server,
+                    driver: "WinSpool RAW".to_string(),
+                    status: p.attributes,
+                }
             })
             .collect()
     }
@@ -79,6 +142,17 @@ pub fn enumerate_windows_printers() -> Vec<PrinterInfo> {
 #[cfg(not(windows))]
 pub fn enumerate_windows_printers() -> Vec<PrinterInfo> {
     Vec::new()
+}
+
+fn push_line(buf: &mut Vec<u8>, s: &str) {
+    buf.extend_from_slice(s.as_bytes());
+    buf.push(b'\n');
+}
+
+fn push_kv(buf: &mut Vec<u8>, cols: usize, label: &str, val: f64) {
+    let right = format!("Rs {:.2}", val);
+    let space = cols.saturating_sub(label.len() + right.len()).max(1);
+    push_line(buf, &format!("{}{}{}", label, " ".repeat(space), right));
 }
 
 pub fn build_escpos_receipt(
@@ -94,17 +168,11 @@ pub fn build_escpos_receipt(
     // Initialize ESC @
     out.extend_from_slice(&[0x1B, 0x40]);
 
-    let push_line = |buf: &mut Vec<u8>, s: &str| {
-        buf.extend_from_slice(s.as_bytes());
-        buf.push(b'\n');
-    };
     let sep = "-".repeat(cols);
     let dsep = "=".repeat(cols);
 
-    // Center align header
-    out.extend_from_slice(&[0x1B, 0x61, 0x01]);
-    // Bold ON
-    out.extend_from_slice(&[0x1B, 0x45, 0x01]);
+    // Center align header + Bold ON
+    out.extend_from_slice(&[0x1B, 0x61, 0x01, 0x1B, 0x45, 0x01]);
     push_line(
         &mut out,
         settings
@@ -160,27 +228,35 @@ pub fn build_escpos_receipt(
     }
 
     push_line(&mut out, &sep);
-    let mut row_kv = |label: &str, val: f64| {
-        let right = format!("Rs {:.2}", val);
-        let space = cols.saturating_sub(label.len() + right.len()).max(1);
-        push_line(&mut out, &format!("{}{}{}", label, " ".repeat(space), right));
-    };
-
-    row_kv(
+    push_kv(
+        &mut out,
+        cols,
         "Taxable Value:",
         bill.get("taxable_amount").and_then(|v| v.as_f64()).unwrap_or(0.0),
     );
     let igst = bill.get("igst_amount").and_then(|v| v.as_f64()).unwrap_or(0.0);
     if igst > 0.0 {
-        row_kv("IGST:", igst);
+        push_kv(&mut out, cols, "IGST:", igst);
     } else {
-        row_kv("CGST:", bill.get("cgst_amount").and_then(|v| v.as_f64()).unwrap_or(0.0));
-        row_kv("SGST:", bill.get("sgst_amount").and_then(|v| v.as_f64()).unwrap_or(0.0));
+        push_kv(
+            &mut out,
+            cols,
+            "CGST:",
+            bill.get("cgst_amount").and_then(|v| v.as_f64()).unwrap_or(0.0),
+        );
+        push_kv(
+            &mut out,
+            cols,
+            "SGST:",
+            bill.get("sgst_amount").and_then(|v| v.as_f64()).unwrap_or(0.0),
+        );
     }
 
     push_line(&mut out, &dsep);
     out.extend_from_slice(&[0x1B, 0x45, 0x01]);
-    row_kv(
+    push_kv(
+        &mut out,
+        cols,
         "GRAND TOTAL:",
         bill.get("grand_total").and_then(|v| v.as_f64()).unwrap_or(0.0),
     );
@@ -207,56 +283,43 @@ pub fn build_escpos_receipt(
 
 #[cfg(windows)]
 pub fn write_raw_to_printer(printer_name: &str, bytes: &[u8]) -> Result<usize, String> {
+    use std::ffi::c_void;
     use std::ptr;
-    use windows_sys::Win32::Foundation::HANDLE;
-    use windows_sys::Win32::Graphics::Printing::{
-        ClosePrinter, DOC_INFO_1W, EndDocPrinter, EndPagePrinter, OpenPrinterW, StartDocPrinterW,
-        StartPagePrinter, WritePrinter,
-    };
 
     let name_w: Vec<u16> = printer_name.encode_utf16().chain(Some(0)).collect();
     let doc_w: Vec<u16> = "AGM Receipt\0".encode_utf16().collect();
     let raw_w: Vec<u16> = "RAW\0".encode_utf16().collect();
 
     unsafe {
-        let mut h_printer: HANDLE = ptr::null_mut();
-        if OpenPrinterW(name_w.as_ptr(), &mut h_printer, ptr::null()) == 0 {
+        let mut h_printer: *mut c_void = ptr::null_mut();
+        if winspool::OpenPrinterW(name_w.as_ptr(), &mut h_printer, ptr::null()) == 0 {
             return Err(format!("Could not open Windows printer '{}'", printer_name));
         }
 
-        let doc_info = DOC_INFO_1W {
-            pDocName: doc_w.as_ptr().cast_mut(),
-            pOutputFile: ptr::null_mut(),
-            pDatatype: raw_w.as_ptr().cast_mut(),
+        let doc_info = winspool::DocInfo1W {
+            p_doc_name: doc_w.as_ptr().cast_mut(),
+            p_output_file: ptr::null_mut(),
+            p_datatype: raw_w.as_ptr().cast_mut(),
         };
 
-        let job_id = StartDocPrinterW(
-            h_printer,
-            1,
-            (&doc_info as *const DOC_INFO_1W).cast(),
-        );
+        let job_id = winspool::StartDocPrinterW(h_printer, 1, &doc_info);
         if job_id == 0 {
-            ClosePrinter(h_printer);
+            winspool::ClosePrinter(h_printer);
             return Err("StartDocPrinterW failed for RAW ESC/POS job".into());
         }
 
-        if StartPagePrinter(h_printer) == 0 {
-            EndDocPrinter(h_printer);
-            ClosePrinter(h_printer);
+        if winspool::StartPagePrinter(h_printer) == 0 {
+            winspool::EndDocPrinter(h_printer);
+            winspool::ClosePrinter(h_printer);
             return Err("StartPagePrinter failed".into());
         }
 
         let mut written: u32 = 0;
-        let ok = WritePrinter(
-            h_printer,
-            bytes.as_ptr().cast(),
-            bytes.len() as u32,
-            &mut written,
-        );
+        let ok = winspool::WritePrinter(h_printer, bytes.as_ptr(), bytes.len() as u32, &mut written);
 
-        EndPagePrinter(h_printer);
-        EndDocPrinter(h_printer);
-        ClosePrinter(h_printer);
+        winspool::EndPagePrinter(h_printer);
+        winspool::EndDocPrinter(h_printer);
+        winspool::ClosePrinter(h_printer);
 
         if ok == 0 {
             return Err("WritePrinter failed while sending ESC/POS bytes".into());
