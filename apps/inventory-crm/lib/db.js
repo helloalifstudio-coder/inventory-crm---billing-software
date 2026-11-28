@@ -226,9 +226,156 @@ CREATE INDEX IF NOT EXISTS idx_notif_logs_created ON notification_logs (created_
 
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS customer_city VARCHAR(120) DEFAULT '';
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS customer_gstin VARCHAR(30) DEFAULT '';
+ALTER TABLE bills ADD COLUMN IF NOT EXISTS is_igst BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE bills ADD COLUMN IF NOT EXISTS igst_amount NUMERIC(12,2) NOT NULL DEFAULT 0.00;
+ALTER TABLE bills ADD COLUMN IF NOT EXISTS shift_id BIGINT;
+ALTER TABLE bills ADD COLUMN IF NOT EXISTS credit_note_used VARCHAR(40) DEFAULT '';
+ALTER TABLE bills ADD COLUMN IF NOT EXISTS credit_note_amount NUMERIC(12,2) NOT NULL DEFAULT 0.00;
+ALTER TABLE bills ADD COLUMN IF NOT EXISTS status VARCHAR(24) NOT NULL DEFAULT 'COMPLETED';
+ALTER TABLE bills ADD COLUMN IF NOT EXISTS record_uuid VARCHAR(64) DEFAULT '';
+ALTER TABLE bill_items ADD COLUMN IF NOT EXISTS igst_rate NUMERIC(5,2) NOT NULL DEFAULT 0.00;
+ALTER TABLE bill_items ADD COLUMN IF NOT EXISTS igst_amount NUMERIC(12,2) NOT NULL DEFAULT 0.00;
+ALTER TABLE bill_items ADD COLUMN IF NOT EXISTS record_uuid VARCHAR(64) DEFAULT '';
+ALTER TABLE garments ADD COLUMN IF NOT EXISTS record_uuid VARCHAR(64) DEFAULT '';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS record_uuid VARCHAR(64) DEFAULT '';
 ALTER TABLE automation_settings ADD COLUMN IF NOT EXISTS printer_mode VARCHAR(30) NOT NULL DEFAULT 'browser';
 ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS customer_name VARCHAR(180) NOT NULL DEFAULT '';
 ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS message_text TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS suppliers (
+    id BIGSERIAL PRIMARY KEY,
+    record_uuid VARCHAR(64) DEFAULT '',
+    supplier_code VARCHAR(40) UNIQUE NOT NULL,
+    name VARCHAR(180) NOT NULL,
+    phone VARCHAR(30) DEFAULT '',
+    gstin VARCHAR(30) DEFAULT '',
+    city VARCHAR(100) DEFAULT '',
+    address TEXT DEFAULT '',
+    opening_balance NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+    total_purchased NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+    total_paid NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS purchase_bills (
+    id BIGSERIAL PRIMARY KEY,
+    record_uuid VARCHAR(64) DEFAULT '',
+    purchase_no VARCHAR(50) UNIQUE NOT NULL,
+    supplier_id BIGINT REFERENCES suppliers(id) ON DELETE SET NULL,
+    supplier_name VARCHAR(180) NOT NULL DEFAULT '',
+    invoice_no VARCHAR(60) DEFAULT '',
+    total_qty INTEGER NOT NULL DEFAULT 0,
+    taxable_amount NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    gst_amount NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    grand_total NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    paid_amount NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    payment_status VARCHAR(24) NOT NULL DEFAULT 'PAID',
+    items_json TEXT DEFAULT '[]',
+    notes TEXT DEFAULT '',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS returns (
+    id BIGSERIAL PRIMARY KEY,
+    record_uuid VARCHAR(64) DEFAULT '',
+    return_no VARCHAR(40) UNIQUE NOT NULL,
+    original_bill_id BIGINT REFERENCES bills(id) ON DELETE SET NULL,
+    original_bill_no VARCHAR(40) NOT NULL,
+    customer_id BIGINT REFERENCES customers(id) ON DELETE SET NULL,
+    customer_name VARCHAR(180) DEFAULT '',
+    customer_phone VARCHAR(30) DEFAULT '',
+    total_qty INTEGER NOT NULL DEFAULT 0,
+    refund_amount NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    refund_mode VARCHAR(30) NOT NULL DEFAULT 'CREDIT_NOTE',
+    credit_note_no VARCHAR(40) DEFAULT '',
+    reason TEXT DEFAULT '',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS return_items (
+    id BIGSERIAL PRIMARY KEY,
+    return_id BIGINT NOT NULL REFERENCES returns(id) ON DELETE CASCADE,
+    garment_id BIGINT REFERENCES garments(id) ON DELETE SET NULL,
+    sku VARCHAR(80) NOT NULL,
+    garment_name VARCHAR(220) NOT NULL DEFAULT '',
+    qty INTEGER NOT NULL DEFAULT 1,
+    unit_price NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    refund_line_total NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    restocked BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS credit_notes (
+    id BIGSERIAL PRIMARY KEY,
+    record_uuid VARCHAR(64) DEFAULT '',
+    credit_note_no VARCHAR(40) UNIQUE NOT NULL,
+    return_id BIGINT REFERENCES returns(id) ON DELETE SET NULL,
+    customer_id BIGINT REFERENCES customers(id) ON DELETE SET NULL,
+    customer_phone VARCHAR(30) DEFAULT '',
+    customer_name VARCHAR(180) DEFAULT '',
+    amount NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    balance_remaining NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    redeemed_bill_no VARCHAR(40) DEFAULT '',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS cash_shifts (
+    id BIGSERIAL PRIMARY KEY,
+    record_uuid VARCHAR(64) DEFAULT '',
+    shift_no VARCHAR(40) UNIQUE NOT NULL,
+    cashier_name VARCHAR(120) NOT NULL DEFAULT 'Counter Staff',
+    opening_cash NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    cash_sales NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    upi_sales NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    card_sales NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    cash_refunds NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    cash_payouts NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    expected_cash NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    counted_cash NUMERIC(12,2),
+    variance_amount NUMERIC(12,2) DEFAULT 0.00,
+    status VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+    notes TEXT DEFAULT '',
+    opened_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    closed_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS alterations (
+    id BIGSERIAL PRIMARY KEY,
+    record_uuid VARCHAR(64) DEFAULT '',
+    slip_no VARCHAR(40) UNIQUE NOT NULL,
+    bill_no VARCHAR(40) DEFAULT '',
+    customer_id BIGINT REFERENCES customers(id) ON DELETE SET NULL,
+    customer_name VARCHAR(180) NOT NULL,
+    customer_phone VARCHAR(30) DEFAULT '',
+    garment_name VARCHAR(220) NOT NULL DEFAULT '',
+    measurements TEXT DEFAULT '',
+    tailor_notes TEXT DEFAULT '',
+    delivery_date VARCHAR(30) DEFAULT '',
+    status VARCHAR(24) NOT NULL DEFAULT 'PENDING',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id BIGSERIAL PRIMARY KEY,
+    actor_role VARCHAR(30) NOT NULL DEFAULT 'owner',
+    action_type VARCHAR(60) NOT NULL,
+    entity_type VARCHAR(40) NOT NULL,
+    entity_ref VARCHAR(80) DEFAULT '',
+    summary TEXT DEFAULT '',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS sync_cursors (
+    device_id VARCHAR(80) PRIMARY KEY,
+    last_pulled_at TIMESTAMP NOT NULL DEFAULT '1970-01-01 00:00:00',
+    last_pushed_at TIMESTAMP NOT NULL DEFAULT '1970-01-01 00:00:00',
+    device_name VARCHAR(160) DEFAULT '',
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 async function ensureSchema(pool) {

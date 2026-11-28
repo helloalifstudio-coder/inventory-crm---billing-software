@@ -11,6 +11,7 @@
     "start": "node scripts/dev-server.js",
     "migrate": "node database/migrate.js",
     "migrate:status": "node database/migrate.js --status",
+    "prepare:windows": "node scripts/prepare-windows-web.js",
     "sync:backend": "node scripts/sync-shared-backend.js",
     "verify": "node scripts/verify-production.js"
   },

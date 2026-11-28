@@ -46,6 +46,24 @@ window.appAPI = {
     resendBillNotifications: (billNo) => apiFetch("/api/settings", { method: "POST", body: JSON.stringify({ action: "resendNotification", bill_no: billNo }) }),
     syncSecondary: () => apiFetch("/api/settings", { method: "POST", body: JSON.stringify({ action: "syncSecondary" }) }),
     archiveExcess: (days) => apiFetch("/api/settings", { method: "POST", body: JSON.stringify({ action: "archiveExcess", days }) }),
+    retailOverview: () => apiFetch("/api/retail?action=overview"),
+    listSuppliers: () => apiFetch("/api/retail?action=suppliers"),
+    saveSupplier: (payload) => apiFetch("/api/retail", { method: "POST", body: JSON.stringify({ action: "saveSupplier", ...payload }) }),
+    recordPurchase: (payload) => apiFetch("/api/retail", { method: "POST", body: JSON.stringify({ action: "recordPurchase", ...payload }) }),
+    listReturns: () => apiFetch("/api/retail?action=returns"),
+    checkCreditNote: (code) => apiFetch(`/api/retail?action=checkCreditNote&code=${encodeURIComponent(code || "")}`),
+    returnBill: (payload) => apiFetch("/api/bills", { method: "POST", body: JSON.stringify({ action: "return", ...payload }) }),
+    listShifts: () => apiFetch("/api/retail?action=shifts"),
+    openShift: (payload) => apiFetch("/api/retail", { method: "POST", body: JSON.stringify({ action: "openShift", ...payload }) }),
+    closeShift: (payload) => apiFetch("/api/retail", { method: "POST", body: JSON.stringify({ action: "closeShift", ...payload }) }),
+    listAlterations: () => apiFetch("/api/retail?action=alterations"),
+    saveAlteration: (payload) => apiFetch("/api/retail", { method: "POST", body: JSON.stringify({ action: "saveAlteration", ...payload }) }),
+    exportGstr1: () => {
+        window.open("/api/retail?action=gstr1", "_blank");
+        return Promise.resolve({ ok: true });
+    },
+    syncCloudNow: () => apiFetch("/api/settings", { method: "POST", body: JSON.stringify({ action: "syncSecondary" }) }),
+    getPrinters: () => Promise.resolve({ ok: true, printers: [], native: false }),
     exportCsv: (type) => {
         window.open(`/api/settings?action=exportCsv&type=${encodeURIComponent(type || "bills")}`, "_blank");
         return Promise.resolve({ ok: true });
@@ -126,6 +144,15 @@ const VIEW_TITLES = {
     "view-customers": "Customers & Purchase History",
     "view-settings": "Settings",
 };
+
+function escapeHtml(str) {
+    return String(str ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
 
 function fmtINR(val) {
     const n = Number(val || 0);
@@ -346,13 +373,13 @@ function renderDashboard() {
             .map(
                 (b) => `
             <tr>
-                <td class="mono"><strong>${b.bill_no}</strong></td>
+                <td class="mono"><strong>${escapeHtml(b.bill_no)}</strong>${b.status === "RETURNED" ? ` <span class="badge badge-red">RET</span>` : ""}</td>
                 <td class="mono" style="font-size:0.84rem;color:var(--text-muted);">${fmtDate(b.created_at)}</td>
                 <td>
-                    <strong>${b.customer_name}</strong>
-                    ${b.customer_phone ? `<span class="mono" style="color:var(--text-secondary);"> (${b.customer_phone})</span>` : ""}
+                    <strong>${escapeHtml(b.customer_name)}</strong>
+                    ${b.customer_phone ? `<span class="mono" style="color:var(--text-secondary);"> (${escapeHtml(b.customer_phone)})</span>` : ""}
                 </td>
-                <td><span class="badge badge-blue">${b.payment_mode}</span></td>
+                <td><span class="badge badge-blue">${escapeHtml(b.payment_mode)}</span></td>
                 <td class="text-right mono">${fmtINR(b.total_gst)}</td>
                 <td class="text-right mono"><strong>${fmtINR(b.grand_total)}</strong></td>
                 <td class="text-center">
@@ -444,28 +471,28 @@ function renderInventoryGrid() {
 
     tbody.innerHTML = filtered
         .map((g) => {
-            const gstRate = Number(g.selling_price) <= 2500 ? "5%" : "12%";
+            const gstRate = Number(g.selling_price) <= 2500 ? "5%" : "18%";
             const stockBadge =
                 g.stock_qty === 0
                     ? `<span class="badge badge-red">0 &middot; OUT</span>`
                     : g.stock_qty <= g.min_stock_alert
                     ? `<span class="badge badge-amber">${g.stock_qty} &middot; LOW</span>`
                     : `<span class="badge badge-mono-solid">${g.stock_qty}</span>`;
-            const metaParts = [g.category, g.fabric_type, g.rack_location].filter(Boolean).join(" &middot; ");
+            const metaParts = [g.category, g.fabric_type, g.rack_location].filter(Boolean).map(escapeHtml).join(" &middot; ");
 
             return `
             <tr>
                 <td>
-                    <div class="mono" style="font-weight:700;color:#0A0A0A;">${g.sku}</div>
-                    <div class="mono" style="font-size:0.78rem;color:#737373;margin-top:2px;">${g.barcode}</div>
+                    <div class="mono" style="font-weight:700;color:#0A0A0A;">${escapeHtml(g.sku)}</div>
+                    <div class="mono" style="font-size:0.78rem;color:#737373;margin-top:2px;">${escapeHtml(g.barcode)}</div>
                 </td>
                 <td>
-                    <div style="font-weight:700;color:#0A0A0A;">${g.name}</div>
+                    <div style="font-weight:700;color:#0A0A0A;">${escapeHtml(g.name)}</div>
                     <div style="font-size:0.8rem;color:#737373;margin-top:2px;">${metaParts}</div>
                 </td>
                 <td>
-                    <span class="badge badge-blue mono" style="margin-right:4px;">${g.size}</span>
-                    <span style="font-size:0.86rem;color:#404040;">${g.colour}</span>
+                    <span class="badge badge-blue mono" style="margin-right:4px;">${escapeHtml(g.size)}</span>
+                    <span style="font-size:0.86rem;color:#404040;">${escapeHtml(g.colour)}</span>
                 </td>
                 <td class="text-right">
                     <div class="mono" style="font-weight:800;color:#0A0A0A;">${fmtINR(g.selling_price)}</div>
@@ -630,21 +657,21 @@ function renderPosGrid() {
     const grid = document.getElementById("pos-items-grid");
     grid.innerHTML = filtered
         .map((g) => {
-            const gst = Number(g.selling_price) <= 2500 ? "5%" : "12%";
+            const gst = Number(g.selling_price) <= 2500 ? "5%" : "18%";
             const stClass = g.stock_qty <= 0 ? "badge-red" : g.stock_qty <= g.min_stock_alert ? "badge-amber" : "badge-green";
             const swatch = getGarmentColourHex(g.colour);
             return `
             <div class="item-tile" style="--tile-swatch:${swatch};" onclick="addGarmentToCart(${g.id})">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span class="tile-sku-chip mono">${g.sku}</span>
+                    <span class="tile-sku-chip mono">${escapeHtml(g.sku)}</span>
                     <span class="badge ${stClass}">${g.stock_qty} in stock</span>
                 </div>
-                <div style="font-weight:700;font-size:0.93rem;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${g.name}">${g.name}</div>
+                <div style="font-weight:700;font-size:0.93rem;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</div>
                 <div class="tile-variant-row">
-                    <span class="tile-size-badge mono">Size ${g.size}</span>
+                    <span class="tile-size-badge mono">Size ${escapeHtml(g.size)}</span>
                     <span style="display:inline-flex;align-items:center;gap:4px;">
                         <span class="swatch-dot" style="background:${swatch};"></span>
-                        <span>${g.colour}</span>
+                        <span>${escapeHtml(g.colour)}</span>
                     </span>
                     <span style="margin-left:auto;font-size:0.74rem;color:#94A3B8;">${gst} GST</span>
                 </div>
@@ -797,14 +824,16 @@ function clearCart() {
     STATE.lastBill = null;
     STATE.lastBillItems = null;
     STATE.matchedCustomer = null;
-    document.getElementById("pos-phone").value = "";
-    document.getElementById("pos-name").value = "";
-    document.getElementById("pos-city").value = "";
-    document.getElementById("pos-discount").value = "0";
-    document.getElementById("pos-received").value = "";
-    document.getElementById("pos-gst-rule").value = "auto";
-    document.getElementById("pos-cgst-rate").value = "2.5";
-    document.getElementById("pos-sgst-rate").value = "2.5";
+    if (document.getElementById("pos-phone")) document.getElementById("pos-phone").value = "";
+    if (document.getElementById("pos-name")) document.getElementById("pos-name").value = "";
+    if (document.getElementById("pos-city")) document.getElementById("pos-city").value = "";
+    if (document.getElementById("pos-discount")) document.getElementById("pos-discount").value = "0";
+    if (document.getElementById("pos-received")) document.getElementById("pos-received").value = "";
+    if (document.getElementById("pos-gst-rule")) document.getElementById("pos-gst-rule").value = "auto";
+    if (document.getElementById("pos-cgst-rate")) document.getElementById("pos-cgst-rate").value = "2.5";
+    if (document.getElementById("pos-sgst-rate")) document.getElementById("pos-sgst-rate").value = "2.5";
+    if (document.getElementById("pos-igst")) document.getElementById("pos-igst").checked = false;
+    if (document.getElementById("pos-credit-note")) document.getElementById("pos-credit-note").value = "";
 
     recalcCart();
 }
@@ -848,70 +877,108 @@ function onSplitInput() {
     recalcCart();
 }
 
-function calcGSTLine(unitPrice, qty, disc, taxMode) {
-    const rule = document.getElementById("pos-gst-rule").value;
-    const customCgst = Number(document.getElementById("pos-cgst-rate").value || 0);
-    const customSgst = Number(document.getElementById("pos-sgst-rate").value || 0);
+function calcGSTLine(unitPrice, qty, disc, taxMode, isIgst = false) {
+    const rule = document.getElementById("pos-gst-rule")?.value || "auto";
+    const customCgst = Number(document.getElementById("pos-cgst-rate")?.value || 0);
+    const customSgst = Number(document.getElementById("pos-sgst-rate")?.value || 0);
 
     const gross = Math.max(0, unitPrice * qty - disc);
     const effUnit = qty > 0 ? gross / qty : unitPrice;
-    let cgstRate, sgstRate, gstRate, taxable, cgst, sgst, total;
+    let cgstRate, sgstRate, igstRate = 0, gstRate, taxable, cgst, sgst, igst = 0, total;
 
     if (rule === "auto") {
+        // Indian Apparel GST Sept 2025/2026 slabs: <= 2500 ex-tax (or <= 2625 MRP incl) => 5%, above => 18%
         if (taxMode === "inclusive") {
-            gstRate = effUnit <= 2625 ? 5 : 12;
+            gstRate = effUnit <= 2625 ? 5 : 18;
         } else {
-            gstRate = effUnit <= 2500 ? 5 : 12;
+            gstRate = effUnit <= 2500 ? 5 : 18;
         }
-        cgstRate = gstRate / 2;
-        sgstRate = gstRate / 2;
+        cgstRate = isIgst ? 0 : gstRate / 2;
+        sgstRate = isIgst ? 0 : gstRate / 2;
+        igstRate = isIgst ? gstRate : 0;
     } else {
-        cgstRate = customCgst;
-        sgstRate = customSgst;
-        gstRate = +(cgstRate + sgstRate).toFixed(2);
+        gstRate = +(customCgst + customSgst).toFixed(2);
+        if (isIgst) {
+            cgstRate = 0;
+            sgstRate = 0;
+            igstRate = gstRate;
+        } else {
+            cgstRate = customCgst;
+            sgstRate = customSgst;
+            igstRate = 0;
+        }
     }
 
     if (taxMode === "inclusive") {
         taxable = +(gross / (1 + gstRate / 100)).toFixed(2);
-        cgst = +(taxable * (cgstRate / 100)).toFixed(2);
-        sgst = +(gross - taxable - cgst).toFixed(2);
+        const totalTax = +(gross - taxable).toFixed(2);
+        if (isIgst) {
+            cgst = 0;
+            sgst = 0;
+            igst = totalTax;
+        } else {
+            cgst = +(taxable * (cgstRate / 100)).toFixed(2);
+            sgst = +(totalTax - cgst).toFixed(2);
+            igst = 0;
+        }
         total = +gross.toFixed(2);
     } else {
         taxable = +gross.toFixed(2);
-        cgst = +(taxable * (cgstRate / 100)).toFixed(2);
-        sgst = +(taxable * (sgstRate / 100)).toFixed(2);
-        total = +(taxable + cgst + sgst).toFixed(2);
+        if (isIgst) {
+            cgst = 0;
+            sgst = 0;
+            igst = +(taxable * (igstRate / 100)).toFixed(2);
+        } else {
+            cgst = +(taxable * (cgstRate / 100)).toFixed(2);
+            sgst = +(taxable * (sgstRate / 100)).toFixed(2);
+            igst = 0;
+        }
+        total = +(taxable + cgst + sgst + igst).toFixed(2);
     }
 
-    return { gstRate, cgstRate, sgstRate, taxable, cgst, sgst, total };
+    return { gstRate, cgstRate, sgstRate, igstRate, taxable, cgst, sgst, igst, total };
+}
+
+function allocateCartDiscounts() {
+    const billDisc = Math.max(0, Number(document.getElementById("pos-discount")?.value || 0));
+    const lineGrosses = STATE.cart.map((c) => Math.max(0, Number(c.selling_price) * Number(c.qty) - Number(c.line_discount || 0)));
+    const grossSum = lineGrosses.reduce((a, b) => a + b, 0);
+    return STATE.cart.map((c, idx) => {
+        const extra = grossSum > 0 && billDisc > 0 ? +((lineGrosses[idx] / grossSum) * billDisc).toFixed(2) : 0;
+        return Number(c.line_discount || 0) + extra;
+    });
 }
 
 function recalcCart() {
     const tbody = document.getElementById("pos-cart-tbody");
     if (!tbody) return;
     const taxMode = document.getElementById("pos-tax-mode")?.value || "exclusive";
+    const isIgst = Boolean(document.getElementById("pos-igst")?.checked);
+    const allocDiscounts = allocateCartDiscounts();
     let subtotalSum = 0,
         taxableSum = 0,
         cgstSum = 0,
         sgstSum = 0,
+        igstSum = 0,
         grandTotal = 0;
 
     if (!STATE.cart.length) {
         tbody.innerHTML = `<tr><td colspan="8" class="text-center" style="padding:28px;color:var(--text-muted);">Type a garment name, SKU, size, or colour above (or click Browse All Stock) to start billing.</td></tr>`;
     } else {
         tbody.innerHTML = STATE.cart
-            .map((c) => {
-                const t = calcGSTLine(Number(c.selling_price), c.qty, Number(c.line_discount || 0), taxMode);
+            .map((c, idx) => {
+                const t = calcGSTLine(Number(c.selling_price), c.qty, allocDiscounts[idx], taxMode, isIgst);
                 subtotalSum += Number(c.selling_price) * c.qty;
                 taxableSum += t.taxable;
                 cgstSum += t.cgst;
                 sgstSum += t.sgst;
+                igstSum += t.igst;
                 grandTotal += t.total;
                 return `
                 <tr>
-                    <td class="mono"><strong>${c.sku}</strong></td>
-                    <td><strong>${c.name}</strong></td>
-                    <td class="text-center">${c.size} / ${c.colour}</td>
+                    <td class="mono"><strong>${escapeHtml(c.sku)}</strong></td>
+                    <td><strong>${escapeHtml(c.name)}</strong></td>
+                    <td class="text-center">${escapeHtml(c.size)} / ${escapeHtml(c.colour)}</td>
                     <td class="text-center">
                         <div style="display:inline-flex;align-items:center;gap:4px;">
                             <button type="button" class="btn btn-xs" onclick="changeCartQty(${c.id}, -1)">-</button>
@@ -922,7 +989,7 @@ function recalcCart() {
                     <td class="text-right">
                         <input type="number" class="input mono text-right" style="width:90px;height:25px;" value="${c.selling_price}" onchange="updateCartUnitPrice(${c.id}, this.value)" />
                     </td>
-                    <td class="text-center"><span class="badge badge-blue">${t.gstRate}%</span></td>
+                    <td class="text-center"><span class="badge badge-blue">${t.gstRate}%${isIgst ? " IGST" : ""}</span></td>
                     <td class="text-right mono"><strong>${fmtINR(t.total)}</strong></td>
                     <td class="text-right"><button type="button" class="btn btn-xs" onclick="removeCartLine(${c.id})">&times;</button></td>
                 </tr>
@@ -931,23 +998,27 @@ function recalcCart() {
             .join("");
     }
 
-    const disc = Number(document.getElementById("pos-discount").value || 0);
-    if (disc > 0 && grandTotal > 0) {
-        const ratio = Math.max(0, (grandTotal - disc) / grandTotal);
-        taxableSum = +(taxableSum * ratio).toFixed(2);
-        cgstSum = +(cgstSum * ratio).toFixed(2);
-        sgstSum = +(sgstSum * ratio).toFixed(2);
-    }
-    grandTotal = Math.max(0, +(grandTotal - disc).toFixed(2));
+    taxableSum = +taxableSum.toFixed(2);
+    cgstSum = +cgstSum.toFixed(2);
+    sgstSum = +sgstSum.toFixed(2);
+    igstSum = +igstSum.toFixed(2);
+    grandTotal = +grandTotal.toFixed(2);
 
-    const recRaw = document.getElementById("pos-received").value;
+    const recRaw = document.getElementById("pos-received")?.value ?? "";
     const receivedAmt = recRaw === "" ? grandTotal : Number(recRaw);
     const diff = +(receivedAmt - grandTotal).toFixed(2);
 
     document.getElementById("lbl-subtotal").textContent = fmtINR(subtotalSum);
     document.getElementById("lbl-taxable").textContent = fmtINR(taxableSum);
-    document.getElementById("lbl-cgst").textContent = fmtINR(cgstSum);
-    document.getElementById("lbl-sgst").textContent = fmtINR(sgstSum);
+    const cgstWrap = document.getElementById("lbl-cgst-wrap");
+    const sgstWrap = document.getElementById("lbl-sgst-wrap");
+    if (isIgst) {
+        if (cgstWrap) cgstWrap.innerHTML = `IGST: <strong id="lbl-cgst" class="mono">${fmtINR(igstSum)}</strong>`;
+        if (sgstWrap) sgstWrap.innerHTML = `CGST/SGST: <strong id="lbl-sgst" class="mono">&#8377;0.00</strong>`;
+    } else {
+        if (cgstWrap) cgstWrap.innerHTML = `CGST: <strong id="lbl-cgst" class="mono">${fmtINR(cgstSum)}</strong>`;
+        if (sgstWrap) sgstWrap.innerHTML = `SGST: <strong id="lbl-sgst" class="mono">${fmtINR(sgstSum)}</strong>`;
+    }
     document.getElementById("lbl-grand").textContent = fmtINR(grandTotal);
     const cntEl = document.getElementById("pos-total-items-count");
     if (cntEl) cntEl.textContent = String(STATE.cart.reduce((n, item) => n + Number(item.qty || 1), 0));
@@ -984,12 +1055,15 @@ function renderThermalPreview() {
     const custPhone = isDone ? STATE.lastBill.customer_phone : document.getElementById("pos-phone")?.value || "";
     const payMode = isDone ? STATE.lastBill.payment_mode : document.getElementById("pos-pay-mode")?.value || "Cash";
     const taxMode = isDone ? STATE.lastBill.tax_mode : document.getElementById("pos-tax-mode")?.value || s.tax_mode || "exclusive";
+    const isIgst = isDone ? Boolean(STATE.lastBill.is_igst) : Boolean(document.getElementById("pos-igst")?.checked);
+    const cnUsed = isDone ? (STATE.lastBill.credit_note_used || "") : (document.getElementById("pos-credit-note")?.value || "").trim();
 
     let linesHtml = "";
     let subtotal = 0,
         taxableSum = 0,
         cgstSum = 0,
         sgstSum = 0,
+        igstSum = 0,
         grandTotal = 0,
         totalQty = 0;
 
@@ -998,9 +1072,9 @@ function renderThermalPreview() {
             totalQty += Number(item.qty);
             linesHtml += `
                 <div style="margin:3px 0;">
-                    <div class="r-bold">${item.garment_name} (${item.size}/${item.colour})</div>
+                    <div class="r-bold">${escapeHtml(item.garment_name)} (${escapeHtml(item.size)}/${escapeHtml(item.colour)})</div>
                     <div class="r-row">
-                        <span>${item.sku} | ${item.qty} x ${Number(item.unit_price).toFixed(2)}</span>
+                        <span>${escapeHtml(item.sku)} | ${item.qty} x ${Number(item.unit_price).toFixed(2)}</span>
                         <span class="r-bold">${Number(item.line_total).toFixed(2)}</span>
                     </div>
                 </div>
@@ -1010,34 +1084,34 @@ function renderThermalPreview() {
         taxableSum = Number(STATE.lastBill.taxable_amount);
         cgstSum = Number(STATE.lastBill.cgst_amount);
         sgstSum = Number(STATE.lastBill.sgst_amount);
+        igstSum = Number(STATE.lastBill.igst_amount || 0);
         grandTotal = Number(STATE.lastBill.grand_total);
     } else {
-        STATE.cart.forEach((c) => {
-            const t = calcGSTLine(Number(c.selling_price), c.qty, Number(c.line_discount || 0), taxMode);
+        const allocDiscounts = allocateCartDiscounts();
+        STATE.cart.forEach((c, idx) => {
+            const t = calcGSTLine(Number(c.selling_price), c.qty, allocDiscounts[idx], taxMode, isIgst);
             subtotal += Number(c.selling_price) * c.qty;
             taxableSum += t.taxable;
             cgstSum += t.cgst;
             sgstSum += t.sgst;
+            igstSum += t.igst;
             grandTotal += t.total;
             totalQty += c.qty;
             linesHtml += `
                 <div style="margin:3px 0;">
-                    <div class="r-bold">${c.name} (${c.size}/${c.colour})</div>
+                    <div class="r-bold">${escapeHtml(c.name)} (${escapeHtml(c.size)}/${escapeHtml(c.colour)})</div>
                     <div class="r-row">
-                        <span>${c.sku} | ${c.qty} x ${Number(c.selling_price).toFixed(2)} (${t.gstRate}%)</span>
+                        <span>${escapeHtml(c.sku)} | ${c.qty} x ${Number(c.selling_price).toFixed(2)} (${t.gstRate}%)</span>
                         <span class="r-bold">${t.total.toFixed(2)}</span>
                     </div>
                 </div>
             `;
         });
-        const disc = Number(document.getElementById("pos-discount")?.value || 0);
-        if (disc > 0 && grandTotal > 0) {
-            const ratio = Math.max(0, (grandTotal - disc) / grandTotal);
-            taxableSum = +(taxableSum * ratio).toFixed(2);
-            cgstSum = +(cgstSum * ratio).toFixed(2);
-            sgstSum = +(sgstSum * ratio).toFixed(2);
-        }
-        grandTotal = Math.max(0, +(grandTotal - disc).toFixed(2));
+        taxableSum = +taxableSum.toFixed(2);
+        cgstSum = +cgstSum.toFixed(2);
+        sgstSum = +sgstSum.toFixed(2);
+        igstSum = +igstSum.toFixed(2);
+        grandTotal = +grandTotal.toFixed(2);
     }
 
     const discVal = isDone ? Number(STATE.lastBill.discount_amount) : Number(document.getElementById("pos-discount")?.value || 0);
@@ -1047,22 +1121,22 @@ function renderThermalPreview() {
 
     const wmText = (localStorage.getItem("pos_receipt_watermark") || s.store_name || "SHOWROOM").trim();
     paper.innerHTML = `
-        <div class="thermal-watermark">${wmText}</div>
+        <div class="thermal-watermark">${escapeHtml(wmText)}</div>
         <div class="thermal-content-layer">
         <div class="r-center">
-            <div class="r-bold" style="font-size:14px;">${s.store_name || "TAX INVOICE"}</div>
-            <div style="font-size:9.5px;">${s.address_line1 || ""}</div>
-            <div style="font-size:9.5px;">${s.address_line2 || ""}</div>
-            <div style="font-size:9.5px;">Tel: ${s.phone || ""}</div>
-            <div class="r-bold" style="font-size:10px;">GSTIN: ${s.gstin || ""}</div>
+            <div class="r-bold" style="font-size:14px;">${escapeHtml(s.store_name || "TAX INVOICE")}</div>
+            <div style="font-size:9.5px;">${escapeHtml(s.address_line1 || "")}</div>
+            <div style="font-size:9.5px;">${escapeHtml(s.address_line2 || "")}</div>
+            <div style="font-size:9.5px;">Tel: ${escapeHtml(s.phone || "")}</div>
+            <div class="r-bold" style="font-size:10px;">GSTIN: ${escapeHtml(s.gstin || "")}</div>
         </div>
         <div class="r-dline"></div>
-        <div class="r-center r-bold">TAX INVOICE (${taxMode.toUpperCase()})</div>
+        <div class="r-center r-bold">TAX INVOICE (${escapeHtml(taxMode.toUpperCase())})</div>
         <div class="r-line"></div>
-        <div class="r-row"><span>Bill: <b>${billNo}</b></span><span>Mode: <b>${payMode}</b></span></div>
-        <div class="r-row"><span>Date: ${dtStr}</span></div>
-        <div class="r-row"><span>Customer: <b>${custName}</b></span></div>
-        ${custPhone ? `<div class="r-row"><span>Mobile: ${custPhone}</span></div>` : ""}
+        <div class="r-row"><span>Bill: <b>${escapeHtml(billNo)}</b></span><span>Mode: <b>${escapeHtml(payMode)}</b></span></div>
+        <div class="r-row"><span>Date: ${escapeHtml(dtStr)}</span></div>
+        <div class="r-row"><span>Customer: <b>${escapeHtml(custName)}</b></span></div>
+        ${custPhone ? `<div class="r-row"><span>Mobile: ${escapeHtml(custPhone)}</span></div>` : ""}
         <div class="r-line"></div>
         <div class="r-row r-bold"><span>ITEM / SKU / QTY x RATE</span><span>AMT (₹)</span></div>
         <div class="r-line"></div>
@@ -1072,8 +1146,8 @@ function renderThermalPreview() {
         <div class="r-row"><span>Subtotal:</span><span>${fmtINR(subtotal)}</span></div>
         ${discVal > 0 ? `<div class="r-row"><span>Discount:</span><span>-${fmtINR(discVal)}</span></div>` : ""}
         <div class="r-row"><span>Taxable Value:</span><span>${fmtINR(taxableSum)}</span></div>
-        <div class="r-row"><span>CGST:</span><span>${fmtINR(cgstSum)}</span></div>
-        <div class="r-row"><span>SGST:</span><span>${fmtINR(sgstSum)}</span></div>
+        ${isIgst ? `<div class="r-row"><span>IGST:</span><span>${fmtINR(igstSum)}</span></div>` : `<div class="r-row"><span>CGST:</span><span>${fmtINR(cgstSum)}</span></div><div class="r-row"><span>SGST:</span><span>${fmtINR(sgstSum)}</span></div>`}
+        ${cnUsed ? `<div class="r-row"><span>Credit Note (${escapeHtml(cnUsed)}):</span><span>Applied</span></div>` : ""}
         <div class="r-dline"></div>
         <div class="r-row r-bold" style="font-size:13px;">
             <span>GRAND TOTAL:</span>
@@ -1083,7 +1157,7 @@ function renderThermalPreview() {
         ${changeVal > 0 ? `<div class="r-row"><span>Change Returned:</span><span>${fmtINR(changeVal)}</span></div>` : ""}
         <div class="r-dline"></div>
         <div class="r-center" style="font-size:9px;margin-top:4px;">
-            ${s.footer_note || ""}
+            ${escapeHtml(s.footer_note || "")}
         </div>
         <div class="r-center" style="margin-top:6px;">
             <svg id="thermal-bill-barcode"></svg>
@@ -1122,6 +1196,8 @@ async function submitBillCheckout() {
         custom_gst_enabled: gstRule !== "auto",
         custom_cgst_rate: document.getElementById("pos-cgst-rate").value,
         custom_sgst_rate: document.getElementById("pos-sgst-rate").value,
+        is_igst: Boolean(document.getElementById("pos-igst")?.checked),
+        credit_note_no: (document.getElementById("pos-credit-note")?.value || "").trim(),
         cash_paid: document.getElementById("pos-split-cash").value,
         upi_paid: document.getElementById("pos-split-upi").value,
         card_paid: document.getElementById("pos-split-card").value,
@@ -1207,9 +1283,17 @@ function printGarmentTag(id) {
         } catch (_) {}
     }
     const erpModal = document.getElementById("modal-erp-receipt");
-    if (erpModal) erpModal.classList.add("open");
-    else window.appAPI.printThermal({ silent: false });
-    if (!erpModal) setTimeout(() => { host.innerHTML = oldHtml; }, 900);
+    if (erpModal) {
+        erpModal.classList.add("open");
+    } else {
+        const restoreHost = () => {
+            host.innerHTML = oldHtml;
+            window.removeEventListener("afterprint", restoreHost);
+        };
+        window.addEventListener("afterprint", restoreHost);
+        window.appAPI.printThermal({ silent: false });
+        setTimeout(restoreHost, 15000);
+    }
 }
 
 // ============================================================================
@@ -1518,8 +1602,13 @@ function printTestReceipt() {
             <div class="r-dline"></div>
         </div>
     `;
+    const restorePaper = () => {
+        paper.innerHTML = oldHtml;
+        window.removeEventListener("afterprint", restorePaper);
+    };
+    window.addEventListener("afterprint", restorePaper);
     window.appAPI.printThermal();
-    setTimeout(() => { paper.innerHTML = oldHtml; }, 1000);
+    setTimeout(restorePaper, 15000);
 }
 
 function toggleWhatsappModeFields() {
@@ -1631,13 +1720,13 @@ function renderAutomationsAndLogs() {
                 return `
                     <tr>
                         <td class="mono" style="font-size:0.82rem;color:var(--text-muted);">${fmtDate(n.created_at)}</td>
-                        <td class="mono"><strong>${n.bill_no || "—"}</strong></td>
-                        <td><span class="badge badge-blue">${n.channel}</span></td>
-                        <td class="mono">${n.customer_phone || "—"}</td>
-                        <td><span class="badge ${cls}">${n.status}</span></td>
-                        <td style="font-size:0.82rem;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(n.provider_response || "").replace(/"/g, "&quot;")}">${n.provider_response || "—"}</td>
+                        <td class="mono"><strong>${escapeHtml(n.bill_no || "—")}</strong></td>
+                        <td><span class="badge badge-blue">${escapeHtml(n.channel)}</span></td>
+                        <td class="mono">${escapeHtml(n.customer_phone || "—")}</td>
+                        <td><span class="badge ${cls}">${escapeHtml(n.status)}</span></td>
+                        <td style="font-size:0.82rem;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(n.provider_response || "")}">${escapeHtml(n.provider_response || "—")}</td>
                         <td class="text-right">
-                            ${n.bill_no ? `<button type="button" class="btn btn-xs" onclick="resendBillMsg('${n.bill_no}')">Resend</button>` : ""}
+                            ${n.bill_no ? `<button type="button" class="btn btn-xs" onclick="resendBillMsg('${escapeHtml(n.bill_no)}')">Resend</button>` : ""}
                         </td>
                     </tr>
                 `;
@@ -1760,7 +1849,8 @@ function openCompanion() {
 }
 
 function closeModal(id) {
-    document.getElementById(id).classList.remove("open");
+    const el = document.getElementById(id);
+    if (el) el.classList.remove("open");
 }
 
 // Keyboard Shortcuts (Dedicated per Interface: POS Terminal vs Back-Office ERP)
@@ -1768,7 +1858,7 @@ window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
         closePosSettingsDrawer();
         closePosLookup();
-        ["modal-pos-receipt", "modal-held-carts", "modal-recent-bills", "modal-erp-receipt", "modal-garment", "modal-customer"].forEach(closeModal);
+        ["modal-pos-receipt", "modal-held-carts", "modal-recent-bills", "modal-erp-receipt", "modal-garment", "modal-customer", "modal-retail-ops"].forEach(closeModal);
         return;
     }
     if (window.APP_INTERFACE === "pos") {
@@ -2387,4 +2477,270 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("focus", () => {
     triggerCrossAppSyncRefresh();
 });
+
+// ============================================================================
+// RETAIL OPERATIONS (RETURNS, PURCHASE GRN, CASH SHIFTS, ALTERATIONS, GSTR-1)
+// ============================================================================
+let _loadedReturnBill = null;
+
+async function openRetailOpsModal(tabId) {
+    const modal = document.getElementById("modal-retail-ops");
+    if (!modal) return;
+    modal.classList.add("open");
+    await switchRetailTab(tabId || "rtab-returns");
+}
+
+async function switchRetailTab(tabId) {
+    document.querySelectorAll(".r-tab").forEach((b) => b.classList.toggle("active", b.getAttribute("data-rtab") === tabId));
+    document.querySelectorAll(".r-tab-pane").forEach((p) => {
+        p.style.display = p.id === tabId ? "block" : "none";
+    });
+    if (tabId === "rtab-returns") await loadReturnsHistory();
+    else if (tabId === "rtab-purchases") await loadSuppliersAndPurchases();
+    else if (tabId === "rtab-shifts") await loadShiftsPanel();
+    else if (tabId === "rtab-alterations") await loadAlterationsPanel();
+}
+
+async function loadReturnBill() {
+    const billNo = (document.getElementById("ret-bill-no")?.value || "").trim();
+    const host = document.getElementById("ret-bill-items-host");
+    if (!billNo || !host) return;
+    const res = await window.appAPI.getBillDetail(billNo);
+    if (!res || !res.ok || !res.bill) {
+        host.innerHTML = `<span style="color:var(--red);">Bill "${escapeHtml(billNo)}" not found.</span>`;
+        _loadedReturnBill = null;
+        return;
+    }
+    _loadedReturnBill = res;
+    host.innerHTML = `
+        <div style="margin-bottom:6px;">Bill <strong>${escapeHtml(res.bill.bill_no)}</strong> &bull; Customer: <strong>${escapeHtml(res.bill.customer_name)}</strong> &bull; Grand Total: <strong>${fmtINR(res.bill.grand_total)}</strong></div>
+        <table class="data-grid">
+            <thead><tr><th>SKU</th><th>Garment</th><th class="text-center">Sold Qty</th><th class="text-center">Return Qty</th><th class="text-right">Unit Net</th></tr></thead>
+            <tbody>
+                ${(res.items || []).map((it, idx) => `
+                    <tr>
+                        <td class="mono">${escapeHtml(it.sku)}</td>
+                        <td>${escapeHtml(it.garment_name)} (${escapeHtml(it.size)}/${escapeHtml(it.colour)})</td>
+                        <td class="text-center mono">${it.qty}</td>
+                        <td class="text-center"><input type="number" class="input mono ret-item-qty" data-idx="${idx}" value="${it.qty}" min="0" max="${it.qty}" style="width:70px;height:25px;" /></td>
+                        <td class="text-right mono">${fmtINR(Number(it.line_total || 0) / Math.max(1, Number(it.qty || 1)))}</td>
+                    </tr>
+                `).join("")}
+            </tbody>
+        </table>
+    `;
+}
+
+async function submitReturnForm() {
+    if (!_loadedReturnBill || !_loadedReturnBill.bill) return alert("Load a valid Bill first.");
+    const items = [];
+    document.querySelectorAll(".ret-item-qty").forEach((inp) => {
+        const idx = Number(inp.getAttribute("data-idx"));
+        const qty = Number(inp.value || 0);
+        const orig = (_loadedReturnBill.items || [])[idx];
+        if (orig && qty > 0) {
+            const perUnit = Number(orig.line_total || 0) / Math.max(1, Number(orig.qty || 1));
+            items.push({
+                garment_id: orig.garment_id,
+                sku: orig.sku,
+                garment_name: orig.garment_name,
+                qty,
+                refund_amount: +(perUnit * qty).toFixed(2),
+            });
+        }
+    });
+    if (!items.length) return alert("Set Return Qty >= 1 for at least one garment.");
+    const res = await window.appAPI.returnBill({
+        bill_id: _loadedReturnBill.bill.id,
+        bill_no: _loadedReturnBill.bill.bill_no,
+        reason: document.getElementById("ret-reason")?.value || "Size Exchange",
+        refund_mode: document.getElementById("ret-refund-mode")?.value || "Credit Note",
+        items,
+    });
+    if (!res || !res.ok) return alert("Return failed: " + (res?.error || "Unknown error"));
+    alert(`Return ${res.return_no} recorded!${res.credit_note_code ? `\nCredit Note: ${res.credit_note_code}` : ""}`);
+    _loadedReturnBill = null;
+    document.getElementById("ret-bill-items-host").textContent = "Return recorded and stock restored.";
+    await refreshAll();
+    await loadReturnsHistory();
+}
+
+async function loadReturnsHistory() {
+    const tbody = document.getElementById("ret-history-tbody");
+    if (!tbody || !window.appAPI.listReturns) return;
+    const res = await window.appAPI.listReturns();
+    const rows = (res && res.returns) || [];
+    tbody.innerHTML = rows.length
+        ? rows.map((r) => `
+            <tr>
+                <td class="mono"><strong>${escapeHtml(r.return_no)}</strong></td>
+                <td class="mono">${escapeHtml(r.bill_no)}</td>
+                <td>${escapeHtml(r.reason || "—")}</td>
+                <td class="mono"><strong>${escapeHtml(r.credit_note_code || "—")}</strong></td>
+                <td class="text-right mono">${fmtINR(r.refund_amount)}</td>
+                <td><span class="badge badge-blue">${escapeHtml(r.refund_mode || "Credit Note")}</span></td>
+            </tr>
+        `).join("")
+        : `<tr><td colspan="6" class="text-center" style="padding:16px;color:var(--text-muted);">No returns processed yet.</td></tr>`;
+}
+
+async function loadSuppliersAndPurchases() {
+    const supSel = document.getElementById("pur-supplier");
+    const garSel = document.getElementById("pur-garment");
+    const tbody = document.getElementById("pur-history-tbody");
+    const ov = window.appAPI.retailOverview ? await window.appAPI.retailOverview() : { ok: false };
+    const suppliers = (ov && ov.suppliers) || [];
+    const purchases = (ov && ov.purchases) || [];
+    if (supSel) {
+        supSel.innerHTML = suppliers.length
+            ? suppliers.map((s) => `<option value="${s.id}">${escapeHtml(s.name)} (${escapeHtml(s.city || "Local")})</option>`).join("")
+            : `<option value="">Walk-in / General Supplier</option>`;
+    }
+    if (garSel) {
+        garSel.innerHTML = (STATE.garments || [])
+            .map((g) => `<option value="${g.id}">${escapeHtml(g.sku)} - ${escapeHtml(g.name)} (${escapeHtml(g.size)})</option>`)
+            .join("");
+    }
+    if (tbody) {
+        tbody.innerHTML = purchases.length
+            ? purchases.map((p) => `
+                <tr>
+                    <td class="mono"><strong>${escapeHtml(p.grn_no)}</strong> / ${escapeHtml(p.supplier_invoice_no || "—")}</td>
+                    <td>${escapeHtml(p.supplier_name || "General")}</td>
+                    <td class="mono">${fmtDate(p.created_at)}</td>
+                    <td class="text-center mono">${p.total_qty}</td>
+                    <td class="text-right mono">${fmtINR(p.total_amount)}</td>
+                </tr>
+            `).join("")
+            : `<tr><td colspan="5" class="text-center" style="padding:16px;color:var(--text-muted);">No purchase GRNs recorded yet.</td></tr>`;
+    }
+}
+
+async function submitSupplierForm() {
+    const name = (document.getElementById("sup-name")?.value || "").trim();
+    if (!name) return alert("Supplier name is required.");
+    const res = await window.appAPI.saveSupplier({
+        name,
+        phone: document.getElementById("sup-phone")?.value || "",
+        gstin: document.getElementById("sup-gstin")?.value || "",
+        city: document.getElementById("sup-city")?.value || "",
+    });
+    if (!res || !res.ok) return alert("Save supplier error: " + (res?.error || "Unknown"));
+    document.getElementById("sup-name").value = "";
+    await loadSuppliersAndPurchases();
+}
+
+async function submitPurchaseForm() {
+    const garmentId = Number(document.getElementById("pur-garment")?.value || 0);
+    const qty = Number(document.getElementById("pur-qty")?.value || 0);
+    const cost = Number(document.getElementById("pur-cost")?.value || 0);
+    if (!garmentId || qty <= 0) return alert("Select a garment SKU and quantity > 0.");
+    const res = await window.appAPI.recordPurchase({
+        supplier_id: document.getElementById("pur-supplier")?.value || null,
+        supplier_invoice_no: document.getElementById("pur-inv")?.value || "",
+        items: [{ garment_id: garmentId, qty, cost_price: cost }],
+    });
+    if (!res || !res.ok) return alert("Purchase GRN error: " + (res?.error || "Unknown"));
+    alert(`Purchase ${res.grn_no} posted! Stock increased by ${qty}.`);
+    await refreshAll();
+    await loadSuppliersAndPurchases();
+}
+
+async function loadShiftsPanel() {
+    const tbody = document.getElementById("shifts-history-tbody");
+    const badge = document.getElementById("shift-status-badge");
+    const btnOpen = document.getElementById("btn-open-shift");
+    const btnClose = document.getElementById("btn-close-shift");
+    if (!window.appAPI.listShifts) return;
+    const res = await window.appAPI.listShifts();
+    const shifts = (res && res.shifts) || [];
+    const active = shifts.find((s) => s.status === "OPEN");
+    if (badge) {
+        badge.className = active ? "badge badge-green" : "badge badge-amber";
+        badge.textContent = active ? `OPEN (${active.shift_no})` : "NO OPEN SHIFT";
+    }
+    if (btnOpen) btnOpen.style.display = active ? "none" : "inline-flex";
+    if (btnClose) btnClose.style.display = active ? "inline-flex" : "none";
+    if (tbody) {
+        tbody.innerHTML = shifts.length
+            ? shifts.map((s) => `
+                <tr>
+                    <td class="mono"><strong>${escapeHtml(s.shift_no)}</strong></td>
+                    <td>${escapeHtml(s.cashier_name || "Counter")}</td>
+                    <td class="mono">${fmtINR(s.opening_cash)}</td>
+                    <td class="mono">${fmtINR(s.expected_cash)}</td>
+                    <td class="mono">${s.closing_cash != null ? fmtINR(s.closing_cash) : "—"}</td>
+                    <td class="mono">${s.variance != null ? fmtINR(s.variance) : "—"}</td>
+                    <td><span class="badge ${s.status === "OPEN" ? "badge-green" : "badge-blue"}">${escapeHtml(s.status)}</span></td>
+                </tr>
+            `).join("")
+            : `<tr><td colspan="7" class="text-center" style="padding:16px;color:var(--text-muted);">No register shifts recorded yet.</td></tr>`;
+    }
+}
+
+async function submitOpenShift() {
+    const res = await window.appAPI.openShift({
+        cashier_name: document.getElementById("shift-cashier")?.value || "Main Counter",
+        opening_cash: Number(document.getElementById("shift-cash-input")?.value || 0),
+    });
+    if (!res || !res.ok) return alert(res?.error || "Could not open shift.");
+    await loadShiftsPanel();
+}
+
+async function submitCloseShift() {
+    const closing = Number(document.getElementById("shift-cash-input")?.value || 0);
+    const res = await window.appAPI.closeShift({ closing_cash: closing });
+    if (!res || !res.ok) return alert(res?.error || "Could not close shift.");
+    const z = res.shift || {};
+    alert(`Z-Report Complete (${z.shift_no || "Shift"})\nExpected Cash: ${fmtINR(z.expected_cash)}\nActual Cash: ${fmtINR(z.closing_cash)}\nVariance: ${fmtINR(z.variance)}`);
+    await loadShiftsPanel();
+}
+
+async function loadAlterationsPanel() {
+    const tbody = document.getElementById("alt-history-tbody");
+    if (!tbody || !window.appAPI.listAlterations) return;
+    const res = await window.appAPI.listAlterations();
+    const rows = (res && res.alterations) || [];
+    tbody.innerHTML = rows.length
+        ? rows.map((a) => `
+            <tr>
+                <td class="mono"><strong>${escapeHtml(a.slip_no)}</strong></td>
+                <td>${escapeHtml(a.customer_name)} ${a.customer_phone ? `(${escapeHtml(a.customer_phone)})` : ""}</td>
+                <td>${escapeHtml(a.garment_ref || "—")}</td>
+                <td>${escapeHtml(a.notes)}</td>
+                <td class="mono">${escapeHtml(a.due_date || "—")}</td>
+                <td><span class="badge ${a.status === "DELIVERED" ? "badge-green" : "badge-amber"}">${escapeHtml(a.status)}</span></td>
+                <td class="text-right">
+                    ${a.status !== "DELIVERED" ? `<button type="button" class="btn btn-xs" onclick="updateAlterationStatus(${a.id}, '${a.status === "PENDING" ? "READY" : "DELIVERED"}')">Mark ${a.status === "PENDING" ? "Ready" : "Delivered"}</button>` : "Done"}
+                </td>
+            </tr>
+        `).join("")
+        : `<tr><td colspan="7" class="text-center" style="padding:16px;color:var(--text-muted);">No alteration slips yet.</td></tr>`;
+}
+
+async function submitAlterationForm() {
+    const customer_name = (document.getElementById("alt-cust")?.value || "").trim();
+    const notes = (document.getElementById("alt-notes")?.value || "").trim();
+    if (!customer_name || !notes) return alert("Customer name and fitting notes are required.");
+    const res = await window.appAPI.saveAlteration({
+        customer_name,
+        customer_phone: document.getElementById("alt-phone")?.value || "",
+        garment_ref: document.getElementById("alt-garment")?.value || "",
+        due_date: document.getElementById("alt-due")?.value || "",
+        notes,
+        status: "PENDING",
+    });
+    if (!res || !res.ok) return alert(res?.error || "Could not save slip.");
+    document.getElementById("alt-notes").value = "";
+    await loadAlterationsPanel();
+}
+
+async function updateAlterationStatus(id, status) {
+    await window.appAPI.saveAlteration({ id, status });
+    await loadAlterationsPanel();
+}
+
+async function downloadGstr1Json() {
+    if (window.appAPI.exportGstr1) await window.appAPI.exportGstr1();
+}
 

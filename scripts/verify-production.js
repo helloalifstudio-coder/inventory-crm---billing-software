@@ -19,7 +19,7 @@ function assert(cond, msg) {
 function listJsFiles(dir) {
     const out = [];
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (entry.name === "node_modules" || entry.name === ".git") continue;
+        if (entry.name === "node_modules" || entry.name === ".git" || entry.name === "target" || entry.name === "dist") continue;
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) out.push(...listJsFiles(full));
         else if (entry.name.endsWith(".js") && !entry.name.endsWith(".min.js")) out.push(full);
@@ -90,17 +90,34 @@ for (const key of ["'phone'", "'name'", "'city'"]) {
 }
 console.log("[PASS] Alif Growth Media brand footer, logo, URL & Billing Enter-key flow verified in both apps.");
 
-// 5. Migrations check
-for (const mig of ["V001__core_schema.sql", "V002__performance_indexes_100k.sql", "V003__automations_and_sync.sql"]) {
+// 5. Migrations & Native Windows checks
+for (const mig of [
+    "V001__core_schema.sql",
+    "V002__performance_indexes_100k.sql",
+    "V003__automations_and_sync.sql",
+    "V004__retail_modules_and_gst_2025.sql",
+    "V005__sync_outbox_and_uuids.sql",
+]) {
     assert(fs.existsSync(path.join(ROOT, "database", "migrations", mig)), `Missing migration ${mig}`);
 }
-console.log("[PASS] Database migrations V001..V003 & runner verified.");
+for (const winFile of [
+    "apps/windows-native/src-tauri/Cargo.toml",
+    "apps/windows-native/src-tauri/tauri.conf.json",
+    "apps/windows-native/src-tauri/src/lib.rs",
+    "apps/windows-native/src-tauri/src/db.rs",
+    "apps/windows-native/src-tauri/src/gst.rs",
+    "apps/windows-native/src-tauri/src/printer.rs",
+    "apps/windows-native/web-adapter/tauri-bridge.js",
+]) {
+    assert(fs.existsSync(path.join(ROOT, winFile)), `Missing Windows native file ${winFile}`);
+}
+console.log("[PASS] Database migrations V001..V005 & Windows Tauri sources verified.");
 
 // 6. Secret-leak hygiene scan (exclude node_modules, .git, gitignored .env/.env.local)
 function walkAll(dir) {
     const res = [];
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (entry.name === "node_modules" || entry.name === ".git" || entry.name === ".env" || entry.name === ".env.local" || entry.name === ".neon" || entry.name.endsWith(".png") || entry.name.endsWith(".ico") || entry.name.endsWith(".ttf")) continue;
+        if (entry.name === "node_modules" || entry.name === ".git" || entry.name === "target" || entry.name === "dist" || entry.name === ".env" || entry.name === ".env.local" || entry.name === ".neon" || entry.name.endsWith(".png") || entry.name.endsWith(".ico") || entry.name.endsWith(".ttf")) continue;
         const p = path.join(dir, entry.name);
         if (entry.isDirectory()) res.push(...walkAll(p));
         else res.push(p);

@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const { requireAuth, parseBody } = require("../lib/auth");
 const { runDualWrite } = require("../lib/db");
 
@@ -11,6 +12,7 @@ module.exports = async function handler(req, res) {
 
     try {
         if (action === "save") {
+            const gId = body.id ? Number(body.id) : null;
             const sku = String(body.sku || "").trim().toUpperCase();
             const barcode = String(body.barcode || "").trim() || sku;
             const name = String(body.name || "").trim();
@@ -23,24 +25,27 @@ module.exports = async function handler(req, res) {
             const fabricType = String(body.fabric_type || "").trim();
             const rackLocation = String(body.rack_location || "RACK-A1").trim();
             const hsnCode = String(body.hsn_code || "6203").trim();
-            const costPrice = Number(body.cost_price || 0);
-            const sellingPrice = Number(body.selling_price || 0);
-            const mrpPrice = Number(body.mrp_price || sellingPrice);
-            const stockQty = Number(body.stock_qty || 0);
-            const minAlert = Number(body.min_stock_alert || 3);
+            const costPrice = Math.max(0, Number(body.cost_price || 0));
+            const sellingPrice = Math.max(0, Number(body.selling_price || 0));
+            const mrpPrice = Math.max(0, Number(body.mrp_price || sellingPrice));
+            const stockQty = Math.max(0, Math.floor(Number(body.stock_qty || 0)));
+            const minAlert = Math.max(0, Math.floor(Number(body.min_stock_alert || 3)));
+            const recUuid = String(body.record_uuid || crypto.randomUUID());
 
             const out = await runDualWrite(async (client) => {
-                const existing = await client.query("SELECT id, stock_qty FROM garments WHERE sku = $1 LIMIT 1", [sku]);
+                const existing = gId
+                    ? await client.query("SELECT id, stock_qty FROM garments WHERE id = $1 LIMIT 1", [gId])
+                    : await client.query("SELECT id, stock_qty FROM garments WHERE sku = $1 LIMIT 1", [sku]);
                 if (existing.rowCount > 0) {
                     const id = existing.rows[0].id;
                     const oldQty = existing.rows[0].stock_qty;
                     await client.query(
                         `UPDATE garments
-                         SET barcode=$1, name=$2, category=$3, sub_category=$4, size=$5, colour=$6,
-                             fabric_type=$7, rack_location=$8, hsn_code=$9, cost_price=$10, mrp_price=$11,
-                             selling_price=$12, stock_qty=$13, min_stock_alert=$14, active=TRUE, updated_at=CURRENT_TIMESTAMP
-                         WHERE id=$15`,
-                        [barcode, name, category, subCategory, size, colour, fabricType, rackLocation, hsnCode, costPrice, mrpPrice, sellingPrice, stockQty, minAlert, id]
+                         SET sku=$1, barcode=$2, name=$3, category=$4, sub_category=$5, size=$6, colour=$7,
+                             fabric_type=$8, rack_location=$9, hsn_code=$10, cost_price=$11, mrp_price=$12,
+                             selling_price=$13, stock_qty=$14, min_stock_alert=$15, active=TRUE, updated_at=CURRENT_TIMESTAMP
+                         WHERE id=$16`,
+                        [sku, barcode, name, category, subCategory, size, colour, fabricType, rackLocation, hsnCode, costPrice, mrpPrice, sellingPrice, stockQty, minAlert, id]
                     );
                     if (stockQty !== oldQty) {
                         await client.query(
@@ -52,10 +57,10 @@ module.exports = async function handler(req, res) {
                 } else {
                     const ins = await client.query(
                         `INSERT INTO garments
-                         (sku, barcode, name, category, sub_category, size, colour, fabric_type, rack_location, hsn_code, cost_price, mrp_price, selling_price, stock_qty, min_stock_alert)
-                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                         (record_uuid, sku, barcode, name, category, sub_category, size, colour, fabric_type, rack_location, hsn_code, cost_price, mrp_price, selling_price, stock_qty, min_stock_alert)
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
                          RETURNING id`,
-                        [sku, barcode, name, category, subCategory, size, colour, fabricType, rackLocation, hsnCode, costPrice, mrpPrice, sellingPrice, stockQty, minAlert]
+                        [recUuid, sku, barcode, name, category, subCategory, size, colour, fabricType, rackLocation, hsnCode, costPrice, mrpPrice, sellingPrice, stockQty, minAlert]
                     );
                     await client.query(
                         `INSERT INTO stock_ledger (garment_id, sku, change_qty, balance_after, movement_type, reference_no, remarks)

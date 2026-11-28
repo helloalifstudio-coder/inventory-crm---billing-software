@@ -131,8 +131,6 @@
         65% { width: 78%; }
         100% { width: 100%; }
     }
-        to { width: 100%; }
-    }
 
     :root {
         --base-font-size: 13px;
@@ -891,8 +889,9 @@
 
     @media print {
         body * { visibility: hidden !important; }
-        #printable-area, #printable-area * { visibility: visible !important; }
-        #printable-area {
+        #printable-area, #printable-area *,
+        #erp-receipt-paper-host, #erp-receipt-paper-host * { visibility: visible !important; }
+        #printable-area, #erp-receipt-paper-host {
             position: fixed !important;
             left: 0 !important;
             top: 0 !important;
@@ -1775,6 +1774,10 @@
                                                 <header class="topbar" style="height:48px;">
                 <div class="topbar-title" id="topbar-title" style="font-size:1.12rem;font-weight:700;">Billing Counter</div>
                 <div class="topbar-actions" id="topbar-context-actions" style="display:flex;align-items:center;gap:8px;-webkit-app-region:no-drag;">
+                    <button type="button" class="pos-cmd-btn" onclick="openRetailOpsModal('rtab-returns')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                        <span>Returns / Shifts</span>
+                    </button>
                     <button type="button" class="pos-cmd-btn" id="btn-pos-settings-toggle" onclick="togglePosSettingsView()">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                         <span>Settings</span>
@@ -1999,16 +2002,16 @@
                                         </select>
                                     </div>
                                     <div class="ctrl-box">
-                                        <label>Discount (â‚¹)</label>
+                                        <label>Discount (&#8377;)</label>
                                         <input type="number" id="pos-discount" class="input mono" style="width:100%;" value="0" min="0" step="10" oninput="recalcCart()" />
                                     </div>
                                     <div class="ctrl-box">
                                         <label>GST Slab Mode</label>
                                         <select id="pos-gst-rule" class="select" style="width:100%;" onchange="onGstRuleChange(this.value)">
-                                            <option value="auto">Auto (5% &le;2500 / 12%)</option>
+                                            <option value="auto">Auto (5% &le;2500 / 18%)</option>
                                             <option value="5">Fixed 5% (2.5+2.5)</option>
-                                            <option value="12">Fixed 12% (6+6)</option>
                                             <option value="18">Fixed 18% (9+9)</option>
+                                            <option value="12">Legacy 12% (6+6)</option>
                                             <option value="0">Zero Tax (0%)</option>
                                             <option value="custom">Custom CGST/SGST %</option>
                                         </select>
@@ -2025,13 +2028,23 @@
                                     </div>
                                 </div>
 
+                                <div style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center;margin-top:6px;">
+                                    <div class="ctrl-box">
+                                        <input type="text" id="pos-credit-note" class="input mono" style="width:100%;height:26px;font-size:0.78rem;" placeholder="Credit Note Code (CN-...)" oninput="recalcCart()" />
+                                    </div>
+                                    <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;font-weight:700;cursor:pointer;white-space:nowrap;">
+                                        <input type="checkbox" id="pos-igst" onchange="recalcCart()" />
+                                        <span>Inter-State IGST</span>
+                                    </label>
+                                </div>
+
                                 <div style="display:flex;justify-content:space-between;font-size:0.82rem;color:#475569;margin-top:8px;">
-                                    <span>Subtotal: <strong id="lbl-subtotal" class="mono">â‚¹0.00</strong></span>
-                                    <span>Taxable: <strong id="lbl-taxable" class="mono">â‚¹0.00</strong></span>
+                                    <span>Subtotal: <strong id="lbl-subtotal" class="mono">&#8377;0.00</strong></span>
+                                    <span>Taxable: <strong id="lbl-taxable" class="mono">&#8377;0.00</strong></span>
                                 </div>
                                 <div style="display:flex;justify-content:space-between;font-size:0.82rem;color:#475569;margin-top:2px;">
-                                    <span>CGST: <strong id="lbl-cgst" class="mono">â‚¹0.00</strong></span>
-                                    <span>SGST: <strong id="lbl-sgst" class="mono">â‚¹0.00</strong></span>
+                                    <span id="lbl-cgst-wrap">CGST: <strong id="lbl-cgst" class="mono">&#8377;0.00</strong></span>
+                                    <span id="lbl-sgst-wrap">SGST: <strong id="lbl-sgst" class="mono">&#8377;0.00</strong></span>
                                 </div>
 
                                 <div class="dmart-led-box">
@@ -2714,6 +2727,185 @@
             <div class="thermal-container" style="max-height:78vh;overflow-y:auto;padding:16px;">
                 <div id="printable-area">
                     <div id="thermal-paper" class="thermal-paper"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: RETAIL OPERATIONS (RETURNS, PURCHASE GRN, CASH SHIFTS, ALTERATIONS & GSTR-1) -->
+    <div id="modal-retail-ops" class="modal-bg">
+        <div class="modal-box" style="width:980px;max-width:96vw;max-height:92vh;display:flex;flex-direction:column;">
+            <div class="panel-header">
+                <span>Retail Operations &amp; Compliance</span>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <button type="button" class="btn btn-xs" onclick="downloadGstr1Json()">Export GSTR-1 JSON</button>
+                    <button type="button" class="btn btn-xs" onclick="closeModal('modal-retail-ops')">Close</button>
+                </div>
+            </div>
+            <div style="padding:12px 16px;overflow-y:auto;flex:1;">
+                <div class="settings-tabs" style="margin-bottom:12px;">
+                    <button type="button" class="settings-tab r-tab active" data-rtab="rtab-returns" onclick="switchRetailTab('rtab-returns')">Returns &amp; Credit Notes</button>
+                    <button type="button" class="settings-tab r-tab" data-rtab="rtab-purchases" onclick="switchRetailTab('rtab-purchases')">Suppliers &amp; Purchase GRN</button>
+                    <button type="button" class="settings-tab r-tab" data-rtab="rtab-shifts" onclick="switchRetailTab('rtab-shifts')">Cash Shift &amp; Z-Report</button>
+                    <button type="button" class="settings-tab r-tab" data-rtab="rtab-alterations" onclick="switchRetailTab('rtab-alterations')">Tailoring &amp; Alterations</button>
+                </div>
+
+                <!-- TAB 1: RETURNS & CREDIT NOTES -->
+                <div id="rtab-returns" class="r-tab-pane" style="display:block;">
+                    <div class="panel" style="margin-bottom:12px;">
+                        <div class="panel-header"><span>Create Sales Return / Exchange Credit Note</span></div>
+                        <div style="padding:12px;display:flex;flex-direction:column;gap:10px;">
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+                                <div class="field" style="flex:1;min-width:180px;">
+                                    <label>Invoice / Bill No *</label>
+                                    <input type="text" id="ret-bill-no" class="input mono" placeholder="e.g. INV-00001" />
+                                </div>
+                                <div class="field" style="flex:1;min-width:180px;">
+                                    <label>Return Reason</label>
+                                    <select id="ret-reason" class="select">
+                                        <option value="Size Exchange">Size Exchange</option>
+                                        <option value="Customer Preference">Customer Preference</option>
+                                        <option value="Defect / Damage">Defect / Damage</option>
+                                    </select>
+                                </div>
+                                <div class="field" style="min-width:150px;">
+                                    <label>Refund Mode</label>
+                                    <select id="ret-refund-mode" class="select">
+                                        <option value="Credit Note">Issue Credit Note</option>
+                                        <option value="Cash">Cash Refund</option>
+                                        <option value="UPI">UPI Refund</option>
+                                    </select>
+                                </div>
+                                <button type="button" class="btn btn-dark" onclick="loadReturnBill()">Load Bill</button>
+                            </div>
+                            <div id="ret-bill-items-host" style="font-size:0.86rem;color:var(--text-muted);">Enter a Bill No and click Load Bill to select returned items.</div>
+                            <div style="display:flex;justify-content:flex-end;">
+                                <button type="button" class="btn btn-primary" onclick="submitReturnForm()">Process Return &amp; Restock</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="panel">
+                        <div class="panel-header"><span>Recent Returns &amp; Issued Credit Notes</span></div>
+                        <div class="table-wrap" style="max-height:220px;">
+                            <table class="data-grid">
+                                <thead>
+                                    <tr>
+                                        <th>Return No</th>
+                                        <th>Bill No</th>
+                                        <th>Reason</th>
+                                        <th>Credit Note</th>
+                                        <th class="text-right">Refund (&#8377;)</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ret-history-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: SUPPLIERS & PURCHASE GRN -->
+                <div id="rtab-purchases" class="r-tab-pane" style="display:none;">
+                    <div style="display:grid;grid-template-columns:1fr 1.2fr;gap:12px;margin-bottom:12px;">
+                        <div class="panel">
+                            <div class="panel-header"><span>Add Supplier / Wholesaler</span></div>
+                            <div style="padding:12px;display:flex;flex-direction:column;gap:8px;">
+                                <div class="field"><label>Supplier Name *</label><input type="text" id="sup-name" class="input" placeholder="e.g. Surat Ethnic Mills" /></div>
+                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                                    <div class="field"><label>Mobile</label><input type="text" id="sup-phone" class="input mono" /></div>
+                                    <div class="field"><label>GSTIN</label><input type="text" id="sup-gstin" class="input mono" /></div>
+                                </div>
+                                <div class="field"><label>City</label><input type="text" id="sup-city" class="input" /></div>
+                                <button type="button" class="btn btn-dark" onclick="submitSupplierForm()">Save Supplier</button>
+                            </div>
+                        </div>
+                        <div class="panel">
+                            <div class="panel-header"><span>Record Purchase GRN (Stock-In)</span></div>
+                            <div style="padding:12px;display:flex;flex-direction:column;gap:8px;">
+                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                                    <div class="field"><label>Supplier</label><select id="pur-supplier" class="select"></select></div>
+                                    <div class="field"><label>Supplier Invoice No</label><input type="text" id="pur-inv" class="input mono" placeholder="SUP-101" /></div>
+                                </div>
+                                <div style="display:grid;grid-template-columns:1.4fr 0.7fr 0.9fr;gap:8px;">
+                                    <div class="field"><label>Garment SKU *</label><select id="pur-garment" class="select"></select></div>
+                                    <div class="field"><label>Qty *</label><input type="number" id="pur-qty" class="input mono" value="10" min="1" /></div>
+                                    <div class="field"><label>Unit Cost (&#8377;)</label><input type="number" id="pur-cost" class="input mono" value="1200" min="0" /></div>
+                                </div>
+                                <button type="button" class="btn btn-primary" onclick="submitPurchaseForm()">Post GRN &amp; Add Stock</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="panel">
+                        <div class="panel-header"><span>Recent Purchase Bills / GRN</span></div>
+                        <div class="table-wrap" style="max-height:190px;">
+                            <table class="data-grid">
+                                <thead>
+                                    <tr><th>GRN / Invoice</th><th>Supplier</th><th>Date</th><th class="text-center">Qty</th><th class="text-right">Total (&#8377;)</th></tr>
+                                </thead>
+                                <tbody id="pur-history-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: CASH SHIFT & Z-REPORT -->
+                <div id="rtab-shifts" class="r-tab-pane" style="display:none;">
+                    <div class="panel" style="margin-bottom:12px;">
+                        <div class="panel-header"><span>Counter Cash Register Shift</span><span id="shift-status-badge" class="badge badge-amber">Checking...</span></div>
+                        <div style="padding:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+                            <div class="field" style="min-width:160px;">
+                                <label>Cashier Name</label>
+                                <input type="text" id="shift-cashier" class="input" value="Main Counter" />
+                            </div>
+                            <div class="field" style="min-width:160px;">
+                                <label>Opening Float / Counted Cash (&#8377;)</label>
+                                <input type="number" id="shift-cash-input" class="input mono" value="2000" min="0" step="50" />
+                            </div>
+                            <button type="button" id="btn-open-shift" class="btn btn-primary" onclick="submitOpenShift()">Open Counter Shift</button>
+                            <button type="button" id="btn-close-shift" class="btn btn-dark" onclick="submitCloseShift()" style="display:none;">Close Shift &amp; Print Z-Report</button>
+                        </div>
+                    </div>
+                    <div class="panel">
+                        <div class="panel-header"><span>Shift &amp; Z-Report History</span></div>
+                        <div class="table-wrap" style="max-height:240px;">
+                            <table class="data-grid">
+                                <thead>
+                                    <tr><th>Shift No</th><th>Cashier</th><th>Opening</th><th>Expected Cash</th><th>Closing Actual</th><th>Variance</th><th>Status</th></tr>
+                                </thead>
+                                <tbody id="shifts-history-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 4: TAILORING & ALTERATIONS -->
+                <div id="rtab-alterations" class="r-tab-pane" style="display:none;">
+                    <div class="panel" style="margin-bottom:12px;">
+                        <div class="panel-header"><span>New Alteration / Fitting Slip</span></div>
+                        <div style="padding:12px;display:flex;flex-direction:column;gap:8px;">
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+                                <div class="field"><label>Customer Name *</label><input type="text" id="alt-cust" class="input" /></div>
+                                <div class="field"><label>Phone</label><input type="text" id="alt-phone" class="input mono" /></div>
+                                <div class="field"><label>Delivery Date</label><input type="date" id="alt-due" class="input" /></div>
+                            </div>
+                            <div style="display:grid;grid-template-columns:1fr 1.6fr auto;gap:8px;align-items:flex-end;">
+                                <div class="field"><label>Garment / Bill No</label><input type="text" id="alt-garment" class="input" placeholder="e.g. Sherwani / INV-00012" /></div>
+                                <div class="field"><label>Fitting / Sleeve / Length Notes *</label><input type="text" id="alt-notes" class="input" placeholder="Sleeve -1.5 in, Waist tighten..." /></div>
+                                <button type="button" class="btn btn-primary" onclick="submitAlterationForm()">Save Slip</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="panel">
+                        <div class="panel-header"><span>Active Alteration Queue</span></div>
+                        <div class="table-wrap" style="max-height:220px;">
+                            <table class="data-grid">
+                                <thead>
+                                    <tr><th>Slip</th><th>Customer</th><th>Garment</th><th>Notes</th><th>Due Date</th><th>Status</th><th class="text-right">Action</th></tr>
+                                </thead>
+                                <tbody id="alt-history-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

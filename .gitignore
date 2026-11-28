@@ -7,3 +7,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 .neon
+apps/windows-native/dist/
+apps/windows-native/src-tauri/target/
+apps/windows-native/src-tauri/gen/
+apps/windows-native/src-tauri/icons/

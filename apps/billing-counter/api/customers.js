@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const { requireAuth, parseBody } = require("../lib/auth");
 const { queryRead, queryBothMerged, runDualWrite } = require("../lib/db");
 
@@ -22,7 +23,6 @@ module.exports = async function handler(req, res) {
                 const cust = custRes.rows[0];
                 if (!cust) return res.status(200).json({ ok: true, customer: null, bills: [], purchased_items: [] });
 
-                // Merge bills & purchased items across BOTH Primary & Secondary (Excess Archive) DBs by phone!
                 const [bills, purchasedItems] = await Promise.all([
                     queryBothMerged(
                         "SELECT * FROM bills WHERE customer_phone = $1 ORDER BY created_at DESC",
@@ -30,13 +30,14 @@ module.exports = async function handler(req, res) {
                         "bill_no"
                     ),
                     queryBothMerged(
-                        `SELECT bi.*, b.bill_no, b.created_at AS bill_date, b.payment_mode
+                        `SELECT bi.*, b.bill_no, b.created_at AS bill_date, b.payment_mode,
+                                CONCAT(b.bill_no, ':', bi.sku, ':', COALESCE(NULLIF(bi.record_uuid,''), CAST(bi.qty AS TEXT))) AS dedupe_key
                          FROM bill_items bi
                          JOIN bills b ON b.id = bi.bill_id
                          WHERE b.customer_phone = $1
                          ORDER BY bi.created_at DESC`,
                         [cust.phone],
-                        "id"
+                        "dedupe_key"
                     ),
                 ]);
 
@@ -49,7 +50,6 @@ module.exports = async function handler(req, res) {
                 });
             }
 
-            // Default: Paginated 100,000+ Customer Directory Search
             const q = String(req.query.query || "").trim();
             const page = Math.max(1, Number(req.query.page || 1));
             const pageSize = Math.min(100, Math.max(10, Number(req.query.pageSize || 50)));
@@ -89,6 +89,7 @@ module.exports = async function handler(req, res) {
 
         if (req.method === "POST") {
             const body = parseBody(req);
+            const custId = body.id ? Number(body.id) : null;
             const phone = String(body.phone || "").trim();
             const fullName = String(body.full_name || "").trim();
             if (!phone || !fullName) {
@@ -100,12 +101,23 @@ module.exports = async function handler(req, res) {
             const email = String(body.email || "").trim();
             const gstin = String(body.gstin || "").trim();
             const notes = String(body.notes || "").trim();
-            const code = `CUST-${String(Date.now()).slice(-6)}`;
+            const code = `CUST-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
+            const recUuid = String(body.record_uuid || crypto.randomUUID());
 
             const out = await runDualWrite(async (client) => {
+                if (custId) {
+                    const up = await client.query(
+                        `UPDATE customers
+                         SET phone = $1, full_name = $2, city = $3, address = $4, email = $5, gstin = $6, notes = $7, updated_at = CURRENT_TIMESTAMP
+                         WHERE id = $8
+                         RETURNING *`,
+                        [phone, fullName, city, address, email, gstin, notes, custId]
+                    );
+                    if (up.rowCount > 0) return up.rows[0];
+                }
                 const ins = await client.query(
-                    `INSERT INTO customers (customer_code, phone, full_name, city, address, email, gstin, notes)
-                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                    `INSERT INTO customers (record_uuid, customer_code, phone, full_name, city, address, email, gstin, notes)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
                      ON CONFLICT (phone) DO UPDATE
                      SET full_name = EXCLUDED.full_name,
                          city = COALESCE(NULLIF(EXCLUDED.city, ''), customers.city),
@@ -115,7 +127,7 @@ module.exports = async function handler(req, res) {
                          notes = COALESCE(NULLIF(EXCLUDED.notes, ''), customers.notes),
                          updated_at = CURRENT_TIMESTAMP
                      RETURNING *`,
-                    [code, phone, fullName, city, address, email, gstin, notes]
+                    [recUuid, code, phone, fullName, city, address, email, gstin, notes]
                 );
                 return ins.rows[0];
             });

@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capabilities for AGM Showroom Suite native windows",
+  "windows": ["main", "billing"],
+  "permissions": [
+    "core:default",
+    "opener:default"
+  ]
+}
